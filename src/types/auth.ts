@@ -1,12 +1,28 @@
 export enum UserRole {
+    // Citoyens
     CITOYEN_STANDARD = 'CITOYEN_STANDARD',
     CITOYEN_VERIFIE = 'CITOYEN_VERIFIE',
+    CITOYEN = 'CITOYEN', // Version courte pour correspondre à citizen@test.cm
+
+    // Saisie & Opérateurs
     OPERATEUR_SAISIE = 'OPERATEUR_SAISIE',
+    
+    // Modération
     MODERATEUR = 'MODERATEUR',
+
+    // Forces de l'ordre
     OFFICIER_POLICE = 'OFFICIER_POLICE',
+    POLICE = 'POLICE', // Version courte pour correspondre à police@test.cm
     AGENT_GENDARMERIE = 'AGENT_GENDARMERIE',
+    GENDARMERIE = 'GENDARMERIE', // Ajout pour gendarmerie@test.cm
+
+    // Organisations & ONG
     RESPONSABLE_ONG = 'RESPONSABLE_ONG',
+    ONG = 'ONG', // Version courte pour correspondre à ong@test.cm
+    
+    // Administration
     ADMIN_ORGANISATION = 'ADMIN_ORGANISATION',
+    ADMIN = 'ADMIN', // Version courte pour correspondre à admin@test.cm
     SUPER_ADMIN = 'SUPER_ADMIN',
 }
 

@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity,
@@ -7,8 +5,7 @@ import {
 } from 'react-native';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import { UserRole } from '../types/auth'; // Import des rôles
-import { ACCESS_LEVELS } from '../constants/roles'; // Import des niveaux d'accès
+import { UserRole } from '../types/auth'; 
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { authService } from '../services/authService';
 
@@ -16,7 +13,6 @@ const Login = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -36,28 +32,74 @@ const Login = ({ navigation }: any) => {
         throw new Error("Erreur lors de la récupération de l'utilisateur.");
       }
 
-      // 2. Récupération du profil utilisateur (et de son rôle réel)
+      // 2. Récupération du rôle réel depuis la base de données
       const { role, level } = await authService.getUserRole(user.id);
-      console.log(`Connecté en tant que: ${role} (Niveau ${level})`);
+      console.log(`Rôle détecté: ${role} (Niveau d'accès: ${level})`);
 
-      // 3. Redirection conditionnelle basée sur le rôle
-      // Si c'est un simple citoyen (Niveau 0 ou 1)
-      if (level <= 1) {
-        // Vers l'accueil Citoyen
-          navigation.replace('MainTabs', { role, accessLevel: level });
-      } else {
-        // Vers l'accueil Pro/Admin
-          navigation.replace('MainTabs', { role, accessLevel: level });
-        Alert.alert("Espace Pro", `Bienvenue dans l'espace ${role}`);
+      // 3. Logique de redirection multi-rôles mise à jour
+      let targetRoute = '';
+
+      switch (role) {
+        case UserRole.SUPER_ADMIN:
+        case UserRole.ADMIN:
+        case UserRole.ADMIN_ORGANISATION:
+          targetRoute = 'homeAdmin';
+          break;
+
+        case UserRole.POLICE:
+        case UserRole.OFFICIER_POLICE:
+        case UserRole.GENDARMERIE:
+        case UserRole.AGENT_GENDARMERIE:
+          targetRoute = 'homePolice';
+          break;
+
+        case UserRole.MODERATEUR:
+          targetRoute = 'homeModerateur';
+          break;
+
+        case UserRole.OPERATEUR_SAISIE:
+          targetRoute = 'homeOperateurSaisie';
+          break;
+
+        case UserRole.ONG:
+        case UserRole.RESPONSABLE_ONG:
+          targetRoute = 'homeResponsableONG';
+          break;
+
+        case UserRole.CITOYEN:
+        case UserRole.CITOYEN_STANDARD:
+        case UserRole.CITOYEN_VERIFIE:
+          targetRoute = 'MainTabs'; 
+          break;
+
+        default:
+          console.log("Rôle non reconnu, redirection vers interface standard");
+          targetRoute = 'MainTabs';
+          break;
+      }
+
+      // 4. Redirection finale avec réinitialisation de la navigation
+      navigation.reset({
+        index: 0,
+        routes: [{ name: targetRoute, params: { role, accessLevel: level } }],
+      });
+
+      // Alerte personnalisée selon le rôle (sauf pour citoyen standard)
+      if (targetRoute !== 'MainTabs') {
+        Alert.alert("Accès Professionnel", `Bienvenue dans l'espace ${role.replace('_', ' ')}`);
       }
 
     } catch (error: any) {
       console.log("Erreur de connexion:", error.message);
       let message = "Une erreur est survenue.";
-  if (error.message.includes("Invalid login credentials")) {
-    message = "E-mail ou mot de passe incorrect.";
-  }
-     Alert.alert("Connexion échouée", message);
+      
+      if (error.message.includes("Invalid login credentials")) {
+        message = "E-mail ou mot de passe incorrect.";
+      } else if (error.message.includes("network")) {
+        message = "Problème de connexion réseau.";
+      }
+      
+      Alert.alert("Connexion échouée", message);
     } finally {
       setLoading(false);
     }
@@ -72,13 +114,13 @@ const Login = ({ navigation }: any) => {
         <View style={styles.contentBox}>
           <View style={styles.header}>
             <Text style={styles.logoText}>Retrouvons<Text style={{ color: '#4FCCAE' }}>Les</Text></Text>
-            <Text style={styles.subtitle}>Connectez-vous pour continuer les recherches et aider la communauté.</Text>
+            <Text style={styles.subtitle}>Portail de connexion sécurisé</Text>
           </View>
 
           <View style={styles.form}>
             <Input
               label="Adresse Email"
-              placeholder="exemple@mail.com"
+              placeholder="votre@email.com"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -108,7 +150,7 @@ const Login = ({ navigation }: any) => {
 
             <View style={styles.dividerContainer}>
               <View style={styles.line} />
-              <Text style={styles.dividerText}>Ou continuer avec</Text>
+              <Text style={styles.dividerText}>Ou</Text>
               <View style={styles.line} />
             </View>
 
@@ -124,9 +166,9 @@ const Login = ({ navigation }: any) => {
             </View>
 
             <View style={styles.footer}>
-              <Text>Pas de compte ? </Text>
+              <Text>Nouveau sur la plateforme ? </Text>
               <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-                <Text style={styles.signUpText}>Créer un compte</Text>
+                <Text style={styles.signUpText}>S'inscrire</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -137,95 +179,28 @@ const Login = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF'
-  },
-  scrollContainer: {
-    padding: 25,
-    justifyContent: 'center',
-    flexGrow: 1
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-    marginTop: 40
-  },
-  logoText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginTop: -15
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 10
-  },
-  form: {
-    width: '100%'
-  },
-  forgotPass: {
-    alignSelf: 'flex-end',
-    marginBottom: 20
-  },
-  forgotText: {
-    color: '#1E99D5',
-    fontWeight: 'bold'
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 25
-  },
-  signUpText: {
-    color: '#4FCCAE',
-    fontWeight: 'bold'
-  },
-  dividerContainer: {
-     flexDirection: 'row', 
-     alignItems: 'center',
-      marginVertical: 25
-     },
-  line: { 
-    flex: 1, 
-    height: 1, 
-    backgroundColor: '#E0E0E0' 
-  },
-  dividerText: {
-     marginHorizontal: 10, 
-     color: '#888' 
-    },
-  socialContainer: {
-     flexDirection: 'row', 
-     justifyContent: 'space-between' 
-     
-     
-    },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  scrollContainer: { padding: 25, justifyContent: 'center', flexGrow: 1 },
+  header: { alignItems: 'center', marginBottom: 40 },
+  logoText: { fontSize: 32, fontWeight: 'bold', color: '#1A1A1A' },
+  subtitle: { fontSize: 16, color: '#666', marginTop: 10, textAlign: 'center' },
+  form: { width: '100%' },
+  forgotPass: { alignSelf: 'flex-end', marginBottom: 20 },
+  forgotText: { color: '#1E99D5', fontWeight: 'bold' },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 25 },
+  signUpText: { color: '#4FCCAE', fontWeight: 'bold' },
+  dividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 25 },
+  line: { flex: 1, height: 1, backgroundColor: '#E0E0E0' },
+  dividerText: { marginHorizontal: 10, color: '#888' },
+  socialContainer: { flexDirection: 'row', justifyContent: 'space-between' },
   socialButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#E0E0E0',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    marginHorizontal: 5
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    borderColor: '#E0E0E0', borderWidth: 1, borderRadius: 10, padding: 10, marginHorizontal: 5
   },
   socialText: { marginLeft: 10, fontWeight: 'bold', color: '#333' },
   contentBox: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#FFF',
-    borderRadius: 10,
-    padding: 24,
-    backgroundColor: '#FFF',
-    shadowColor: '#000',
-    
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 4,
+    width: '100%', borderRadius: 15, padding: 24, backgroundColor: '#FFF',
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5,
   }
 });
 

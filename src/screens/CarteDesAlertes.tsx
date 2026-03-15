@@ -1,141 +1,157 @@
 import React, { useState, useEffect } from 'react';
+import { 
+  StyleSheet, View, TextInput, TouchableOpacity, 
+  Text, SafeAreaView, Platform, PermissionsAndroid 
+} from 'react-native';
+import { WebView } from 'react-native-webview';
 import Geolocation from 'react-native-geolocation-service';
-import { Platform, StyleSheet, View, TextInput, TouchableOpacity, Text, SafeAreaView, Dimensions, PermissionsAndroid } from 'react-native';
-import MapView, { Marker, UrlTile } from 'react-native-maps';
-import { Search, Users, Eye, Crosshair, RefreshCcw } from 'lucide-react-native';
-// @ts-ignore
-import Config from 'react-native-config';
-
-const { width, height } = Dimensions.get('window');
+import { Search, Users, Navigation } from 'lucide-react-native';
 
 const CarteDesAlertes = () => {
-  const [region, setRegion] = useState({
-    latitude: 3.848,
-    longitude: 11.502,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userCoords, setUserCoords] = useState({ lat: 3.848, lng: 11.502 }); // Yaoundé par défaut
+  const MAPTILER_KEY = 'QC2faDaY0B4wB6W510Cu';
 
-  // Fonction de permission Android corrigée
-  const requestAndroidPermission = async () => {
+  const requestPermission = async () => {
     if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch (err) {
-        console.warn("Erreur permission:", err);
-        return false;
-      }
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
     }
     return true;
   };
 
   useEffect(() => {
-    let watchId: number | null = null;
-
-    const startTracking = async () => {
-      const hasPermission = await requestAndroidPermission();
-      
-      if (Platform.OS === 'ios') {
-        Geolocation.requestAuthorization('whenInUse');
-      }
-
-      if (hasPermission || Platform.OS === 'ios') {
-        watchId = Geolocation.watchPosition(
-          position => {
-            const { latitude, longitude } = position.coords;
-            setUserLocation({ latitude, longitude });
-            setRegion(prev => ({
-              ...prev,
-              latitude,
-              longitude,
-            }));
+    requestPermission().then(hasPermission => {
+      if (hasPermission) {
+        Geolocation.getCurrentPosition(
+          (pos) => {
+            setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
           },
-          error => console.log("Erreur Géo:", error.message),
-          { enableHighAccuracy: true, distanceFilter: 10, interval: 5000 }
+          (err) => console.log("Erreur localisation:", err),
+          { enableHighAccuracy: true }
         );
       }
-    };
-
-    startTracking();
-
-    return () => {
-      if (watchId !== null) {
-        Geolocation.clearWatch(watchId);
-      }
-    };
+    });
   }, []);
 
-  // --- SÉCURISATION DE L'URL ---
-  // On vérifie si la clé existe, sinon on utilise OpenStreetMap pour éviter le crash
-  const MAPTILER_KEY = Config?.REACT_APP_MAPTILER_API_KEY;
-  
-  const tileUrl = MAPTILER_KEY 
-    ? `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`
-    : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  // Le HTML contient le moteur de carte MapLibre (plus léger et gratuit)
+  const mapHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+        <script src="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.js"></script>
+        <link href="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.css" rel="stylesheet" />
+        <style>
+          body { margin: 0; padding: 0; }
+          #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+          .marker-user {
+            background-color: #2563eb;
+            width: 15px; height: 15px;
+            border-radius: 50%; border: 2px solid white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+          }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          const map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}',
+            center: [${userCoords.lng}, ${userCoords.lat}],
+            zoom: 12
+          });
+
+          // Ajouter un marqueur pour l'utilisateur
+          const el = document.createElement('div');
+          el.className = 'marker-user';
+          new maplibregl.Marker(el)
+            .setLngLat([${userCoords.lng}, ${userCoords.lat}])
+            .addTo(map);
+
+          // Fonction pour recentrer (appelable depuis React Native si besoin)
+          window.centerMap = (lng, lat) => {
+            map.flyTo({ center: [lng, lat], zoom: 14 });
+          };
+        </script>
+      </body>
+    </html>
+  `;
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      {/* Barre de recherche flottante */}
+      <View style={styles.headerFloating}>
         <View style={styles.searchBar}>
-          <Search color="#9ca3af" size={20} style={{ marginRight: 8 }} />
-          <TextInput placeholder="Recherche..." style={styles.input} />
+          <Search color="#64748b" size={20} />
+          <TextInput 
+            placeholder="Rechercher une alerte..." 
+            style={styles.input}
+            placeholderTextColor="#94a3b8"
+          />
         </View>
       </View>
 
-      <View style={styles.filterContainer}>
-        <TouchableOpacity style={styles.blueButton}>
-          <Users color="white" size={18} />
-          <Text style={styles.buttonText}>Personnes disparues</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.blueButton, { backgroundColor: '#2563eb' }]}> 
-          <Eye color="white" size={18} />
-          <Text style={styles.buttonText}>Observations</Text>
-        </TouchableOpacity>
+      {/* La Carte via WebView */}
+      <View style={styles.mapContainer}>
+        <WebView 
+          originWhitelist={['*']}
+          source={{ html: mapHtml }}
+          style={styles.webview}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+        />
       </View>
 
-      <View style={styles.mapWrapper}>
-        <MapView
-          style={styles.map}
-          initialRegion={region}
-          // "none" empêche Android de chercher une clé Google Maps payante
-          mapType={Platform.OS === 'android' ? "none" : "standard"}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
+      {/* Boutons d'actions flottants */}
+      <View style={styles.bottomActions}>
+        <TouchableOpacity style={styles.fab}>
+          <Users color="white" size={20} />
+          <Text style={styles.fabText}>Alertes proches</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+            style={[styles.fab, styles.fabSecondary]}
+            onPress={() => {/* Logique pour recentrer */}}
         >
-          <UrlTile 
-            urlTemplate={tileUrl} 
-            maximumZ={19} 
-            zIndex={1} 
-          />
-          
-          {userLocation && (
-            <Marker coordinate={userLocation} zIndex={2}>
-              <View style={styles.eyeMarker}>
-                <Eye color="white" size={14} />
-              </View>
-            </Marker>
-          )}
-        </MapView>
+          <Navigation color="#1d4ed8" size={20} />
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3f4f6' },
-  header: { padding: 15, backgroundColor: 'white' },
-  searchBar: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 25, paddingHorizontal: 15, height: 45 },
-  input: { flex: 1, fontSize: 16 },
-  filterContainer: { flexDirection: 'row', padding: 10, gap: 8, backgroundColor: 'white' },
-  blueButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1d4ed8', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, gap: 6 },
-  buttonText: { color: 'white', fontWeight: '600', fontSize: 12 },
-  mapWrapper: { flex: 1 },
-  map: { ...StyleSheet.absoluteFillObject },
-  eyeMarker: { backgroundColor: '#8b5cf6', padding: 5, borderRadius: 20, borderWidth: 2, borderColor: 'white' }
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  headerFloating: {
+    position: 'absolute', top: 50, left: 20, right: 20,
+    zIndex: 10, elevation: 5,
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8,
+  },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'white', borderRadius: 30,
+    paddingHorizontal: 15, height: 50,
+  },
+  input: { flex: 1, marginLeft: 10, fontSize: 15, color: '#1e293b' },
+  mapContainer: { flex: 1 },
+  webview: { flex: 1 },
+  bottomActions: {
+    position: 'absolute', bottom: 30, left: 20, right: 20,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'
+  },
+  fab: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1d4ed8', paddingHorizontal: 20,
+    paddingVertical: 12, borderRadius: 25, elevation: 4,
+  },
+  fabSecondary: {
+    backgroundColor: 'white', width: 50, height: 50,
+    justifyContent: 'center', paddingHorizontal: 0,
+  },
+  fabText: { color: 'white', fontWeight: '600', marginLeft: 8 }
 });
 
 export default CarteDesAlertes;

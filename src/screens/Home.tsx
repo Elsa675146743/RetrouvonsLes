@@ -8,7 +8,7 @@ import { supabase } from '../services/supabase';
 import HomeCitoyenVerifierStandard from './home/homeCitoyenVerifierStandard';
 import HomeOperateurSaisie from './home/homeOperateurSaisie';
 import HomeModerateur from './home/homeModerateur';
-import HomePoliceGendarmerie from './home/homePoliceGendamerie';
+import HomePoliceGendarmerie from './home/homePolice';
 import HomeResponsableONG from './home/homeResponsableONG';
 import HomeAdmin from './home/homeAdmin';
 import HomeSuperAdmin from './home/homeSuperAdmin';
