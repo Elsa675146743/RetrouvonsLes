@@ -48,6 +48,14 @@ import Dossiers from './src/screens/home/operateur/Dossiers';
 import ModifierDossier from './src/screens/home/operateur/ModifierDossier';
 import SignalementsAttente from './src/screens/home/operateur/SignalementsAttente';
 import PhotosAttente from './src/screens/home/operateur/PhotosAttente';
+import ValidationSignalementsPage from './src/screens/home/moderateur/ValidationSignalementsPage';
+import ModerationPhotosPage from './src/screens/home/moderateur/ModerationPhotosPage';
+import RapportModerationPage from './src/screens/home/moderateur/RapportModerationPage';
+import VerificationIdentitePage from './src/screens/home/moderateur/VerificationIdentitePage';
+import NotificationsPage from './src/screens/home/moderateur/NotificationsPage';
+import VueCartePage from './src/screens/home/moderateur/VueCartePage';
+import MonHistoriquePage from './src/screens/home/moderateur/MonHistoriquePage';
+
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -156,6 +164,23 @@ function App() {
                   gestureEnabled: false 
                 }} 
               />
+
+              {/* --- ROUTES GESTION DOSSIERS Moderateur (NOUVELLES) --- */}
+
+                 <Stack.Screen name="ValidationSignalementsPage" component={ValidationSignalementsPage} />
+                <Stack.Screen name="ModerationPhotosPage" component={ModerationPhotosPage} />
+                 <Stack.Screen name="RapportModerationPage" component={RapportModerationPage} />
+                <Stack.Screen name="VerificationIdentitePage" component={VerificationIdentitePage} />
+                <Stack.Screen name="VueCartePage" component={VueCartePage} />
+                <Stack.Screen name="NotificationsPage" component={NotificationsPage} />
+                <Stack.Screen name="MonHistoriquePage" component={MonHistoriquePage} />
+
+
+
+
+
+
+
 
               <Stack.Screen name="ProfilUtilisateur" component={ProfilUtilisateur} />
 
