@@ -55,6 +55,12 @@ import VerificationIdentitePage from './src/screens/home/moderateur/Verification
 import NotificationsPage from './src/screens/home/moderateur/NotificationsPage';
 import VueCartePage from './src/screens/home/moderateur/VueCartePage';
 import MonHistoriquePage from './src/screens/home/moderateur/MonHistoriquePage';
+import ResultatsIAPage from './src/screens/home/moderateur/ResultatsIAPage';
+import NouveauDossierPersonne from './src/screens/home/police/NouveauDossierPersonne';
+import NouveauDossierDisparition from './src/screens/home/police/NouveauDossierDisparition';
+import NouveauDossierVerification from './src/screens/home/police/NouveauDossierVerification';
+import DetailDossierPage from './src/screens/home/police/DetailDossierPage';
+import DossiersPage from './src/screens/home/police/DossiersPage';
 
 
 const Stack = createStackNavigator();
@@ -174,7 +180,17 @@ function App() {
                 <Stack.Screen name="VueCartePage" component={VueCartePage} />
                 <Stack.Screen name="NotificationsPage" component={NotificationsPage} />
                 <Stack.Screen name="MonHistoriquePage" component={MonHistoriquePage} />
+                <Stack.Screen name="ResultatsIAPage" component={ResultatsIAPage} />
 
+
+
+              {/* --- ROUTES GESTION DOSSIERS Police (NOUVELLES) --- */}  
+
+                 <Stack.Screen name="NouveauDossierPersonne" component={NouveauDossierPersonne} />
+                <Stack.Screen name="NouveauDossierDisparition" component={NouveauDossierDisparition} />
+                <Stack.Screen name="NouveauDossierVerification" component={NouveauDossierVerification} />
+                <Stack.Screen name="DetailDossierPage" component={DetailDossierPage} />
+                <Stack.Screen name="DossiersPage" component={DossiersPage} />
 
 
 

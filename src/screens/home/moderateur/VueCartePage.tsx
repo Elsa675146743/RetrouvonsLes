@@ -12,7 +12,7 @@ const { width, height } = Dimensions.get('window');
 const MAPTILER_KEY = 'QC2faDaY0B4wB6W510Cu';
 
 // =====================================================
-// ✅ PICKER MODAL
+// PICKER MODAL
 // =====================================================
 function PickerModal({ visible, onClose, options, selected, onSelect, title }: {
   visible: boolean;
@@ -46,11 +46,12 @@ function PickerModal({ visible, onClose, options, selected, onSelect, title }: {
 }
 
 // =====================================================
-// ✅ COMPOSANT PRINCIPAL
+// COMPOSANT PRINCIPAL
 // =====================================================
-function VueCartePage({ navigation }: { navigation: any }) {
+ export default function VueCartePage({ navigation }: { navigation: any }) {
 
   const webViewRef = useRef<any>(null);
+  const signalementsRef = useRef<any[]>([]);
 
   const [signalements, setSignalements] = useState<any[]>([]);
   const [loading, setLoading]           = useState(true);
@@ -69,10 +70,9 @@ function VueCartePage({ navigation }: { navigation: any }) {
   const [showScorePicker, setShowScorePicker]     = useState(false);
 
   const [stats, setStats] = useState({
-    total: 0, geoLocalises: 0, enAttente: 0, valides: 0, alertes: 0
+    total: 0, geoLocalises: 0, enAttente: 0, valides: 0
   });
 
-  // ── OPTIONS ──────────────────────────────────────────────────
   const statutOptions = [
     { label: 'Tous',       value: 'tous'            },
     { label: 'En attente', value: 'en_attente'      },
@@ -127,15 +127,18 @@ function VueCartePage({ navigation }: { navigation: any }) {
 
       const list = data || [];
       setSignalements(list);
+      signalementsRef.current = list;
+
       setStats({
         total:        list.length,
         geoLocalises: list.filter((s: any) => s.latitude_observation && s.longitude_observation).length,
         enAttente:    list.filter((s: any) => s.statut_validation === 'en_attente').length,
         valides:      list.filter((s: any) => s.statut_validation === 'valide').length,
-        alertes:      0,
       });
 
-      if (mapReady) envoyerMarqueurs(list);
+      if (mapReady) {
+        setTimeout(() => envoyerMarqueurs(list), 300);
+      }
 
     } catch (err) {
       console.error('Erreur signalements carte:', err);
@@ -147,17 +150,19 @@ function VueCartePage({ navigation }: { navigation: any }) {
 
   useEffect(() => { fetchSignalements(); }, [fetchSignalements]);
 
-  // ── ENVOYER MARQUEURS VERS LA CARTE ──────────────────────────
+  // ── ENVOYER MARQUEURS ─────────────────────────────────────────
   const envoyerMarqueurs = (list: any[]) => {
-    const sigGeo = list.filter((s: any) => s.latitude_observation && s.longitude_observation);
+    const sigGeo = list.filter((s: any) =>
+      s.latitude_observation && s.longitude_observation
+    );
     const marqueurs = sigGeo.map((s: any) => ({
-      id:    s.id,
-      lat:   parseFloat(s.latitude_observation),
-      lng:   parseFloat(s.longitude_observation),
-      titre: s.ville_observation || s.lieu_observation || '—',
-      desc:  (s.description || '—').substring(0, 60),
+      id:     s.id,
+      lat:    parseFloat(s.latitude_observation),
+      lng:    parseFloat(s.longitude_observation),
+      titre:  s.ville_observation || s.lieu_observation || '—',
+      desc:   (s.description || '—').substring(0, 60),
       statut: s.statut_validation,
-      color: getStatutColor(s.statut_validation),
+      color:  getStatutColor(s.statut_validation),
     }));
 
     if (webViewRef.current) {
@@ -174,7 +179,9 @@ function VueCartePage({ navigation }: { navigation: any }) {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'MAP_READY') {
         setMapReady(true);
-        envoyerMarqueurs(signalements);
+        setTimeout(() => {
+          envoyerMarqueurs(signalementsRef.current);
+        }, 500);
       }
       if (msg.type === 'MARKER_CLICK') {
         navigation.navigate('ValidationSignalementsPage', { signalementId: msg.id });
@@ -219,7 +226,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
     return map[statut] || { bg: '#f1f5f9', text: '#64748b', label: statut };
   };
 
-  // ── HTML CARTE MAPLIBRE ───────────────────────────────────────
+  // ── HTML CARTE — IDENTIQUE à Disparition.tsx ──────────────────
   const mapHtml = `
     <!DOCTYPE html>
     <html>
@@ -229,7 +236,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
         <link href="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.css" rel="stylesheet" />
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          html, body { width: 100%; height: 100%; overflow: hidden; }
+          body { font-family: sans-serif; }
           #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
 
           .popup-titre { font-weight: bold; font-size: 13px; color: #1e293b; margin-bottom: 4px; }
@@ -240,38 +247,22 @@ function VueCartePage({ navigation }: { navigation: any }) {
             font-size: 12px; cursor: pointer; width: 100%; font-weight: bold;
           }
 
-          #legend {
-            position: absolute; bottom: 10px; left: 10px;
-            background: rgba(255,255,255,0.95);
-            border-radius: 8px; padding: 8px 12px;
-            font-size: 11px; z-index: 10;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            pointer-events: none;
-          }
-          .leg-title { font-weight: bold; margin-bottom: 5px; color: #1e293b; font-size: 12px; }
-          .leg-item  { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-          .leg-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+         
         </style>
       </head>
       <body>
         <div id="map"></div>
-        <div id="legend">
-          <div class="leg-title">Statuts</div>
-          <div class="leg-item"><div class="leg-dot" style="background:#f59e0b"></div>En attente</div>
-          <div class="leg-item"><div class="leg-dot" style="background:#2563eb"></div>En cours</div>
-          <div class="leg-item"><div class="leg-dot" style="background:#16a34a"></div>Validé</div>
-          <div class="leg-item"><div class="leg-dot" style="background:#dc2626"></div>Rejeté</div>
-        </div>
+        
 
         <script>
           var MAPTILER_KEY = '${MAPTILER_KEY}';
-          var markers      = [];
+          var markers = [];
 
           var map = new maplibregl.Map({
             container: 'map',
-            style:     'https://api.maptiler.com/maps/streets-v2/style.json?key=' + MAPTILER_KEY,
-            center:    [11.502, 3.848],
-            zoom:      6
+            style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=' + MAPTILER_KEY,
+            center: [11.502, 3.848],
+            zoom: 6
           });
 
           map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -297,17 +288,14 @@ function VueCartePage({ navigation }: { navigation: any }) {
                 'background:' + item.color,
                 'border:2.5px solid #FFF',
                 'box-shadow:0 2px 6px rgba(0,0,0,0.35)',
-                'cursor:pointer',
-                'transition:transform 0.15s'
+                'cursor:pointer'
               ].join(';');
-              el.onmouseover = function() { el.style.transform = 'scale(1.3)'; };
-              el.onmouseout  = function() { el.style.transform = 'scale(1)'; };
 
               var popup = new maplibregl.Popup({ offset: 16, maxWidth: '220px' })
                 .setHTML(
                   '<div class="popup-titre">' + item.titre + '</div>' +
                   '<div class="popup-desc">'  + item.desc  + '</div>' +
-                  '<button class="popup-btn" onclick="clickMarker(\'' + item.id + '\')">👁 Afficher</button>'
+                  '<button class="popup-btn" onclick="clickMarker(\\'' + item.id + '\\')">👁 Afficher</button>'
                 );
 
               var m = new maplibregl.Marker({ element: el })
@@ -329,8 +317,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
 
           function clickMarker(id) {
             window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'MARKER_CLICK',
-              id:   id
+              type: 'MARKER_CLICK', id: id
             }));
           }
 
@@ -351,7 +338,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
               }
             } catch(err) {
               window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'GEOCODE_ERROR', message: 'Erreur de recherche'
+                type: 'GEOCODE_ERROR', message: 'Erreur réseau'
               }));
             }
           }
@@ -364,7 +351,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
   const renderCarte = () => (
     <View style={{ flex: 1 }}>
 
-      {/* Barre de recherche */}
+      {/* Barre recherche */}
       <View style={styles.searchBar}>
         <Ionicons name="search-outline" size={16} color="#94a3b8" style={{ marginRight: 8 }} />
         <TextInput
@@ -381,24 +368,25 @@ function VueCartePage({ navigation }: { navigation: any }) {
         </TouchableOpacity>
       </View>
 
-      {/* ✅ WebView hauteur fixe */}
-      <WebView
-        ref={webViewRef}
-        originWhitelist={['*']}
-        source={{ html: mapHtml }}
-        style={styles.carteMap}
-        javaScriptEnabled
-        domStorageEnabled
-        onMessage={handleWebViewMessage}
-      />
+      {/* ✅ MÊME structure exacte que Disparition.tsx */}
+      <View style={styles.mapContainer}>
+        <WebView
+          ref={webViewRef}
+          originWhitelist={['*']}
+          source={{ html: mapHtml }}
+          style={{ flex: 1 }}
+          javaScriptEnabled
+          onMessage={handleWebViewMessage}
+        />
+      </View>
 
-      {/* Panneau bas horizontal */}
+      {/* Panneau bas */}
       <View style={styles.carteSidebar}>
         <Text style={styles.carteSidebarTitle}>
           Sur la carte ({stats.geoLocalises})
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 4 }}>
             {signalements
               .filter((s: any) => s.latitude_observation)
               .slice(0, 15)
@@ -408,6 +396,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
                   <TouchableOpacity
                     key={s.id}
                     style={styles.carteSidebarItem}
+                    activeOpacity={0.75}
                     onPress={() => {
                       if (webViewRef.current) {
                         webViewRef.current.injectJavaScript(`
@@ -421,7 +410,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
                     }}
                   >
                     <View style={[styles.sidebarDot, { backgroundColor: getStatutColor(s.statut_validation) }]} />
-                    <View style={{ flex: 1 }}>
+                    <View style={styles.sidebarInfo}>
                       <Text style={styles.sidebarLieu} numberOfLines={1}>
                         {s.ville_observation || s.lieu_observation || '—'}
                       </Text>
@@ -520,7 +509,7 @@ function VueCartePage({ navigation }: { navigation: any }) {
   );
 
   // =====================================================
-  // RENDER
+  // RENDER PRINCIPAL
   // =====================================================
   return (
     <SafeAreaView style={styles.container}>
@@ -604,7 +593,6 @@ function VueCartePage({ navigation }: { navigation: any }) {
           { icon: 'map-outline',              label: `${stats.geoLocalises} géolocalisés`, color: '#2563eb' },
           { icon: 'time-outline',             label: `${stats.enAttente} En attente`,      color: '#f59e0b' },
           { icon: 'checkmark-circle-outline', label: `${stats.valides} Validés`,           color: '#16a34a' },
-          { icon: 'notifications-outline',    label: `${stats.alertes} Alertes`,           color: '#64748b' },
         ].map((s, i) => (
           <View key={i} style={styles.statsBarItem}>
             <Ionicons name={s.icon as any} size={12} color={s.color} />
@@ -635,69 +623,70 @@ function VueCartePage({ navigation }: { navigation: any }) {
 // STYLES
 // =====================================================
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: '#f1f5f9' },
-  header:            { backgroundColor: '#2563eb', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 18 },
-  btnBack:           { marginBottom: 8 },
-  headerTitleRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  headerTitle:       { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
-  headerSub:         { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 14 },
-  headerControls:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  vueToggle:         { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: 2 },
-  vueBtn:            { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 6 },
-  vueBtnActive:      { backgroundColor: '#FFF' },
-  vueBtnText:        { fontSize: 12, color: '#FFF', fontWeight: '600' },
-  vueBtnTextActive:  { color: '#2563eb' },
-  btnFilters:        { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  btnFiltersActive:  { backgroundColor: 'rgba(255,255,255,0.2)' },
-  btnFiltersText:    { fontSize: 12, color: '#FFF', fontWeight: '600' },
-  btnRefresh:        { width: 38, height: 38, borderRadius: 8, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', justifyContent: 'center', alignItems: 'center' },
-  filtresZone:       { flexDirection: 'row', gap: 8, marginTop: 14 },
-  filtreGroup:       { flex: 1 },
-  filtreLabel:       { fontSize: 9, color: '#bfdbfe', fontWeight: 'bold', marginBottom: 4, textTransform: 'uppercase' },
-  filtrePicker:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, height: 36 },
-  filtrePickerText:  { fontSize: 11, color: '#1e293b', flex: 1 },
-  statsBar:          { flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  statsBarItem:      { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statsBarText:      { fontSize: 11, color: '#64748b', fontWeight: '500' },
-  loadingContainer:  { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container:          { flex: 1, backgroundColor: '#f1f5f9' },
+  header:             { backgroundColor: '#2563eb', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 18 },
+  btnBack:            { marginBottom: 8 },
+  headerTitleRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  headerTitle:        { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
+  headerSub:          { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 14 },
+  headerControls:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  vueToggle:          { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: 2 },
+  vueBtn:             { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 6 },
+  vueBtnActive:       { backgroundColor: '#FFF' },
+  vueBtnText:         { fontSize: 12, color: '#FFF', fontWeight: '600' },
+  vueBtnTextActive:   { color: '#2563eb' },
+  btnFilters:         { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  btnFiltersActive:   { backgroundColor: 'rgba(255,255,255,0.2)' },
+  btnFiltersText:     { fontSize: 12, color: '#FFF', fontWeight: '600' },
+  btnRefresh:         { width: 38, height: 38, borderRadius: 8, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', justifyContent: 'center', alignItems: 'center' },
+  filtresZone:        { flexDirection: 'row', gap: 8, marginTop: 14 },
+  filtreGroup:        { flex: 1 },
+  filtreLabel:        { fontSize: 9, color: '#bfdbfe', fontWeight: 'bold', marginBottom: 4, textTransform: 'uppercase' },
+  filtrePicker:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, height: 36 },
+  filtrePickerText:   { fontSize: 11, color: '#1e293b', flex: 1 },
+  statsBar:           { flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  statsBarItem:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statsBarText:       { fontSize: 11, color: '#64748b', fontWeight: '500' },
+  loadingContainer:   { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // Barre recherche
-  searchBar:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingHorizontal: 12, height: 46, gap: 8 },
-  searchInput:       { flex: 1, fontSize: 13, color: '#1e293b' },
-  searchBtn:         { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 6 },
-  searchBtnText:     { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
+  // Recherche
+  searchBar:          { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingHorizontal: 12, height: 46, gap: 8 },
+  searchInput:        { flex: 1, fontSize: 13, color: '#1e293b' },
+  searchBtn:          { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 6 },
+  searchBtnText:      { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
 
-  // ✅ Carte WebView — hauteur fixe
-  carteMap:          { height: height - 380, backgroundColor: '#e8f4fd' },
+  // ✅ MÊME structure que Disparition.tsx — View avec height fixe
+  mapContainer:       { height: 300, backgroundColor: '#f1f5f9', overflow: 'hidden' },
 
   // Panneau bas
-  carteSidebar:      { backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 10, maxHeight: 110 },
-  carteSidebarTitle: { fontSize: 12, fontWeight: 'bold', color: '#1e293b', marginBottom: 6 },
-  carteSidebarItem:  { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8fafc', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#e2e8f0', minWidth: 160, maxWidth: 200 },
-  sidebarDot:        { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  sidebarLieu:       { fontSize: 11, fontWeight: '600', color: '#1e293b' },
-  sidebarCoords:     { fontSize: 9, color: '#94a3b8', marginTop: 1 },
-  sidebarBadge:      { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 8, marginLeft: 'auto' as any },
-  sidebarBadgeText:  { fontSize: 8, fontWeight: 'bold' },
-  sidebarEmpty:      { fontSize: 11, color: '#94a3b8', paddingVertical: 10 },
+  carteSidebar:       { backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, maxHeight: 105 },
+  carteSidebarTitle:  { fontSize: 12, fontWeight: 'bold', color: '#1e293b', marginBottom: 6 },
+  carteSidebarItem:   { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8fafc', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#e2e8f0', minWidth: 170 },
+  sidebarDot:         { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  sidebarInfo:        { flex: 1 },
+  sidebarLieu:        { fontSize: 11, fontWeight: '600', color: '#1e293b' },
+  sidebarCoords:      { fontSize: 9, color: '#94a3b8', marginTop: 1 },
+  sidebarBadge:       { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, flexShrink: 0 },
+  sidebarBadgeText:   { fontSize: 8, fontWeight: 'bold' },
+  sidebarEmpty:       { fontSize: 11, color: '#94a3b8', paddingVertical: 10 },
 
   // Liste
-  emptyContainer:    { alignItems: 'center', paddingTop: 60 },
-  emptyText:         { color: '#94a3b8', fontSize: 13, marginTop: 10 },
-  listeCard:         { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
-  listeCardLeft:     { flexDirection: 'row', gap: 10, flex: 1 },
-  listeIconBox:      { width: 36, height: 36, borderRadius: 8, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  listeVille:        { fontSize: 13, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
-  listeDesc:         { fontSize: 11, color: '#64748b', lineHeight: 15, marginBottom: 5 },
-  listeFooter:       { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  listeDate:         { fontSize: 10, color: '#94a3b8' },
-  listeCoords:       { fontSize: 10, color: '#94a3b8' },
-  listeScore:        { fontSize: 10, color: '#2563eb', fontWeight: '600' },
-  listeCardRight:    { alignItems: 'flex-end', gap: 8, justifyContent: 'center' },
-  statutBadge:       { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  statutBadgeText:   { fontSize: 8, fontWeight: 'bold' },
-  btnAfficher:       { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#2563eb', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  btnAfficherText:   { fontSize: 11, color: '#2563eb', fontWeight: '600' },
+  emptyContainer:     { alignItems: 'center', paddingTop: 60 },
+  emptyText:          { color: '#94a3b8', fontSize: 13, marginTop: 10 },
+  listeCard:          { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  listeCardLeft:      { flexDirection: 'row', gap: 10, flex: 1 },
+  listeIconBox:       { width: 36, height: 36, borderRadius: 8, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  listeVille:         { fontSize: 13, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
+  listeDesc:          { fontSize: 11, color: '#64748b', lineHeight: 15, marginBottom: 5 },
+  listeFooter:        { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  listeDate:          { fontSize: 10, color: '#94a3b8' },
+  listeCoords:        { fontSize: 10, color: '#94a3b8' },
+  listeScore:         { fontSize: 10, color: '#2563eb', fontWeight: '600' },
+  listeCardRight:     { alignItems: 'flex-end', gap: 8, justifyContent: 'center' },
+  statutBadge:        { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
+  statutBadgeText:    { fontSize: 8, fontWeight: 'bold' },
+  btnAfficher:        { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#2563eb', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  btnAfficherText:    { fontSize: 11, color: '#2563eb', fontWeight: '600' },
 });
 
 const pStyles = StyleSheet.create({
@@ -710,4 +699,3 @@ const pStyles = StyleSheet.create({
   itemTextActive: { color: '#2563eb', fontWeight: '600' },
 });
 
-export default VueCartePage;

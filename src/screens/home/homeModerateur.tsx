@@ -14,6 +14,7 @@ import VerificationIdentitePage        from './moderateur/VerificationIdentitePa
 import NotificationsPage               from './moderateur/NotificationsPage';
 import VueCartePage                    from './moderateur/VueCartePage';
 import MonHistoriquePage from './moderateur/MonHistoriquePage';
+import ResultatsIAPage from './moderateur/ResultatsIAPage';
 
 const { width } = Dimensions.get('window');
 const Tab   = createBottomTabNavigator();
@@ -372,7 +373,7 @@ const TabWithPlusButton = ({ navigation, level }: any) => {
           }}
         />
         <Tab.Screen name="ModerationPhotosTab" component={ModerationPhotosPage} />
-        <Tab.Screen name="ResultatsIATab" component={ResultatsIA} options={{ tabBarLabel: 'Résultats IA' }} />
+        <Tab.Screen name="ResultatsIATab" component={ResultatsIAPage} options={{ tabBarLabel: 'Résultats IA' }} />
       </Tab.Navigator>
 
       <MenuPlus visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
@@ -393,6 +394,8 @@ const HomeStack = ({ level }: any) => (
     <Stack.Screen name="ValidationSignalementsPage" component={ValidationSignalementsPage}  />
     <Stack.Screen name="ModerationPhotosPage"       component={ModerationPhotosPage}        />
     <Stack.Screen name="RapportModerationPage"      component={RapportModerationPage}       />
+    <Stack.Screen name="ResultatsIA"      component={ResultatsIAPage}       />
+
 
     {/* ✅ Pages navigables depuis le bouton + */}
     <Stack.Screen name="VerificationIdentite"       component={VerificationIdentitePage}    />
