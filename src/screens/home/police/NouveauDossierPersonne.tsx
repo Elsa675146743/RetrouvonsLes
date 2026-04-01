@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { launchImageLibrary } from 'react-native-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Modal, Platform } from 'react-native';
 
 function Stepper({ etape }: { etape: number }) {
   const etapes = [
@@ -60,6 +62,10 @@ export default function NouveauDossierPersonne({ navigation, route }: any) {
   const [signesDistinctifs, setSignesDistinctifs] = useState('');
   const [description, setDescription]           = useState('');
   const [photos, setPhotos]                     = useState<any[]>([]);
+  const [showSexePicker, setShowSexePicker]     = useState(false);
+  const [showDatePicker, setShowDatePicker]     = useState(false);
+  const [dateNaissanceObj, setDateNaissanceObj] = useState<Date | null>(null);
+
 
   const sexeOptions = [
     { label: 'Masculin', value: 'masculin' },
@@ -134,26 +140,46 @@ export default function NouveauDossierPersonne({ navigation, route }: any) {
           </View>
 
           <View style={styles.row}>
-            <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Date de naissance</Text>
-              <TextInput style={styles.input} placeholder="JJ/MM/AAAA" placeholderTextColor="#94a3b8" value={dateNaissance} onChangeText={setDateNaissance} keyboardType="numeric" />
-            </View>
-            <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Sexe</Text>
-              <View style={styles.sexeRow}>
-                {sexeOptions.map(opt => (
-                  <TouchableOpacity
-                    key={opt.value}
-                    style={[styles.sexeBtn, sexe === opt.value && styles.sexeBtnActive]}
-                    onPress={() => setSexe(opt.value)}
-                  >
-                    <Text style={[styles.sexeBtnText, sexe === opt.value && styles.sexeBtnTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+                    <View style={styles.fieldHalf}>
+          <Text style={styles.label}>Date de naissance</Text>
+          <TouchableOpacity
+            style={styles.input}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={{ fontSize: 13, color: dateNaissanceObj ? '#1e293b' : '#94a3b8' }}>
+              {dateNaissanceObj
+                ? dateNaissanceObj.toLocaleDateString('fr-FR')
+                : 'JJ/MM/AAAA'}
+            </Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={dateNaissanceObj || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(Platform.OS === 'ios');
+                if (selectedDate) {
+                  setDateNaissanceObj(selectedDate);
+                  setDateNaissance(selectedDate.toISOString().split('T')[0]);
+                }
+              }}
+            />
+          )}
+        </View>
+           <View style={styles.fieldHalf}>
+        <Text style={styles.label}>Sexe</Text>
+        <TouchableOpacity
+          style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+          onPress={() => setShowSexePicker(true)}
+        >
+          <Text style={{ fontSize: 13, color: '#1e293b' }}>
+            {sexeOptions.find(o => o.value === sexe)?.label || 'Masculin'}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color="#64748b" />
+        </TouchableOpacity>
+      </View>
           </View>
 
           <View style={styles.row}>
@@ -251,6 +277,27 @@ export default function NouveauDossierPersonne({ navigation, route }: any) {
           <Text style={styles.btnSuivantText}>Suivant →</Text>
         </TouchableOpacity>
       </View>
+
+          {/* MODAL SEXE — avant </SafeAreaView> */}
+    <Modal visible={showSexePicker} transparent animationType="fade" onRequestClose={() => setShowSexePicker(false)}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowSexePicker(false)}>
+        <View style={styles.box}>
+          <Text style={styles.title}>Sexe</Text>
+          {sexeOptions.map(opt => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.item, sexe === opt.value && styles.itemActive]}
+              onPress={() => { setSexe(opt.value); setShowSexePicker(false); }}
+            >
+              <Text style={[styles.itemText, sexe === opt.value && styles.itemTextActive]}>
+                {opt.label}
+              </Text>
+              {sexe === opt.value && <Ionicons name="checkmark" size={16} color="#2563eb" />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
     </SafeAreaView>
   );
 }
@@ -289,4 +336,13 @@ const styles = StyleSheet.create({
   btnAnnulerText:      { color: '#FFF', fontWeight: '600', fontSize: 14 },
   btnSuivant:          { backgroundColor: '#2563eb', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
   btnSuivantText:      { color: '#FFF', fontWeight: '700', fontSize: 14 },
+
+
+  overlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  box:           { backgroundColor: '#FFF', borderRadius: 14, padding: 16, width: '80%' },
+  title:         { fontSize: 15, fontWeight: 'bold', color: '#1e293b', marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  item:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8 },
+  itemActive:    { backgroundColor: '#eff6ff' },
+  itemText:      { fontSize: 14, color: '#1e293b' },
+  itemTextActive:{ color: '#2563eb', fontWeight: '600' },
 });

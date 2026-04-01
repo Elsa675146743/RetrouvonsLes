@@ -10,6 +10,7 @@ import { supabase } from '../../services/supabase';
 import NouveauDossierPersonne from './police/NouveauDossierPersonne';
 import DossiersPage      from './police/DossiersPage';
 import DetailDossierPage from './police/DetailDossierPage';
+import GestionAlertesPage from './police/GestionAlertesPage';
 
 
 const { width } = Dimensions.get('window');
@@ -596,7 +597,7 @@ const TabWithPlusButton = ({ navigation, level }: any) => {
         />
         <Tab.Screen
           name="AlertesTab"
-          component={GestionAlertes}
+          component={GestionAlertesPage}
           options={{ tabBarLabel: 'Alertes' }}
         />
         <Tab.Screen
@@ -632,7 +633,7 @@ function HomeStack({ level }: { level?: number | null }) {
       
       <Stack.Screen name="Dossiers"         component={DossiersPage}         />
       <Stack.Screen name="DetailDossier"    component={DetailDossierPage}    />
-      <Stack.Screen name="GestionAlertes"   component={GestionAlertes}   />
+      <Stack.Screen name="GestionAlertes"   component={GestionAlertesPage}   />
       <Stack.Screen name="Signalements"     component={Signalements}     />
       <Stack.Screen name="ModerationPhotos" component={ModerationPhotos} />
       <Stack.Screen name="VueCarte"         component={VueCarte}         />

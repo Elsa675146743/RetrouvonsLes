@@ -94,11 +94,11 @@ function OngletInformations({ dossier, navigation }: { dossier: any; navigation:
       </View>
 
       <View style={oStyles.actionsRow}>
-        <TouchableOpacity style={oStyles.btnAction}>
+        <TouchableOpacity style={oStyles.btnAction} onPress={() => navigation.navigate('ModifierDossierPage', { dossierId: dossier.id })}>
           <Ionicons name="create-outline" size={16} color="#FFF" />
           <Text style={oStyles.btnActionText}>Modifier</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[oStyles.btnAction, { backgroundColor: '#f59e0b' }]}>
+        <TouchableOpacity style={[oStyles.btnAction, { backgroundColor: '#f59e0b' }]} onPress={() => navigation.navigate('CreerAlertePage', { dossierId: dossier.id })}>
           <Ionicons name="notifications-outline" size={16} color="#FFF" />
           <Text style={oStyles.btnActionText}>Créer Alerte</Text>
         </TouchableOpacity>

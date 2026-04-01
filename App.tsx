@@ -61,6 +61,9 @@ import NouveauDossierDisparition from './src/screens/home/police/NouveauDossierD
 import NouveauDossierVerification from './src/screens/home/police/NouveauDossierVerification';
 import DetailDossierPage from './src/screens/home/police/DetailDossierPage';
 import DossiersPage from './src/screens/home/police/DossiersPage';
+import ModifierDossierPage from './src/screens/home/police/ModifierDossierPage';
+import GestionAlertesPage from './src/screens/home/police/GestionAlertesPage';
+import CreerAlertePage from './src/screens/home/police/CreerAlertePage';
 
 
 const Stack = createStackNavigator();
@@ -191,6 +194,11 @@ function App() {
                 <Stack.Screen name="NouveauDossierVerification" component={NouveauDossierVerification} />
                 <Stack.Screen name="DetailDossierPage" component={DetailDossierPage} />
                 <Stack.Screen name="DossiersPage" component={DossiersPage} />
+                 <Stack.Screen name="ModifierDossierPage" component={ModifierDossierPage} />
+                <Stack.Screen name="GestionAlertesPage" component={GestionAlertesPage} />
+                <Stack.Screen name="CreerAlertePage" component={CreerAlertePage} />
+
+
 
 
 
