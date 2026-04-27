@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, SafeAreaView,
   TouchableOpacity, StatusBar, ActivityIndicator,
-  Dimensions, Platform, Image, Share,
+  Dimensions, Platform, Image,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../../services/supabase';
@@ -35,8 +35,11 @@ interface DossierDetail {
 function BadgeStatut({ statut }: { statut: string }) {
   const map: Record<string, { label: string; bg: string; color: string }> = {
     en_cours: { label: 'EN COURS', bg: '#fef3c7', color: '#d97706' },
-    resolu:   { label: 'RÉSOLU',   bg: '#dcfce7', color: '#16a34a' },
-    archive:  { label: 'ARCHIVÉ', bg: '#f1f5f9', color: '#64748b' },
+    retrouve_vivant: { label: 'RETROUVÉ VIVANT', bg: '#dcfce7', color: '#16a34a' },
+    retrouve_decede: { label: 'RETROUVÉ DÉCÉDÉ', bg: '#fee2e2', color: '#dc2626' },
+    suspendu: { label: 'SUSPENDU', bg: '#f1f5f9', color: '#64748b' },
+    classe_sans_suite: { label: 'CLASSÉ', bg: '#f1f5f9', color: '#94a3b8' },
+    transfere: { label: 'TRANSFÉRÉ', bg: '#ede9fe', color: '#7c3aed' },
   };
   const s = map[statut] ?? { label: statut.toUpperCase(), bg: '#f1f5f9', color: '#64748b' };
   return (
@@ -51,13 +54,35 @@ const bS = StyleSheet.create({
   text:  { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
 });
 
+// ─── BADGE URGENCE ───
+function BadgeUrgence({ niveau }: { niveau: string | null }) {
+  if (!niveau) return null;
+  const map: Record<string, { label: string; bg: string; color: string }> = {
+    critique: { label: 'CRITIQUE', bg: '#fee2e2', color: '#dc2626' },
+    urgent:   { label: 'URGENT',   bg: '#ffedd5', color: '#ea580c' },
+    normal:   { label: 'NORMAL',   bg: '#fef3c7', color: '#d97706' },
+    faible:   { label: 'FAIBLE',   bg: '#dcfce7', color: '#16a34a' },
+  };
+  const u = map[niveau] ?? { label: niveau.toUpperCase(), bg: '#f1f5f9', color: '#64748b' };
+  return (
+    <View style={[bU.badge, { backgroundColor: u.bg }]}>
+      <Text style={[bU.text, { color: u.color }]}>{u.label}</Text>
+    </View>
+  );
+}
+
+const bU = StyleSheet.create({
+  badge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+  text:  { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+});
+
 // ─── ONGLETS ───
 type Onglet = 'infos' | 'photos' | 'chronologie';
 
 // ─── ÉCRAN PRINCIPAL ───
 export default function VoirDossier({ route, navigation }: any) {
   const dossierParam = route.params?.dossier;
-  const dossierId    = route.params?.id ?? dossierParam?.id;
+  const dossierId    = route.params?.id ?? route.params?.dossierId ?? dossierParam?.id;
 
   const [dossier, setDossier]   = useState<DossierDetail | null>(dossierParam ?? null);
   const [loading, setLoading]   = useState(!dossierParam);
@@ -81,56 +106,104 @@ export default function VoirDossier({ route, navigation }: any) {
     const fetchDetail = async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('personne')
+        // Récupérer le dossier et la personne
+        const { data: dossierData, error: dossierError } = await supabase
+          .from('dossier_disparition')
           .select(`
-            id, nom, prenom, age, sexe, taille, poids,
-            couleur_cheveux, couleur_yeux, signes_distinctifs,
-            dernier_lieu_vu, ville_disparition,
-            date_disparition, informations_complementaires,
-            statut_dossier, nb_vues, niveau_urgence,
-            photo:photo(url)
+            id,
+            date_disparition,
+            lieu_disparition,
+            ville_disparition,
+            circonstances,
+            statut_dossier,
+            niveau_urgence,
+            nombre_vues_fiche,
+            id_personne
           `)
           .eq('id', dossierId)
           .single();
 
-        if (error) { console.warn('VoirDossier fetch:', error.message); return; }
-        if (!data) return;
+        if (dossierError) {
+          console.warn('VoirDossier fetch dossier:', dossierError.message);
+          setLoading(false);
+          return;
+        }
+
+        if (!dossierData) {
+          setLoading(false);
+          return;
+        }
+
+        // Récupérer la personne
+        const { data: personneData, error: personneError } = await supabase
+          .from('personne')
+          .select(`
+            id, nom, prenom, age_estime_min, age_estime_max, sexe,
+            taille_cm, poids_kg, couleur_cheveux, couleur_yeux,
+            signes_distinctifs, photo_principale,
+            description_physique, derniers_vetements_portes
+          `)
+          .eq('id', dossierData.id_personne)
+          .single();
+
+        if (personneError) {
+          console.warn('VoirDossier fetch personne:', personneError.message);
+        }
+
+        // Récupérer les photos
+        const { data: photosData } = await supabase
+          .from('photo')
+          .select('url_cloudinary, est_principale')
+          .eq('id_personne', dossierData.id_personne)
+          .eq('approuvee', true)
+          .order('est_principale', { ascending: false });
+
+        const photoUrls = (photosData ?? []).map(p => p.url_cloudinary).filter(Boolean);
+        
+        // Calculer l'âge estimé
+        let age: number | null = null;
+        if (personneData?.age_estime_min && personneData?.age_estime_max) {
+          age = Math.floor((personneData.age_estime_min + personneData.age_estime_max) / 2);
+        } else if (personneData?.age_estime_min) {
+          age = personneData.age_estime_min;
+        } else if (personneData?.age_estime_max) {
+          age = personneData.age_estime_max;
+        }
 
         setDossier({
-          id:                 data.id,
-          nom:                data.nom ?? '',
-          prenom:             data.prenom ?? '',
-          age:                data.age,
-          sexe:               data.sexe,
-          taille:             data.taille,
-          poids:              data.poids,
-          couleur_cheveux:    data.couleur_cheveux,
-          couleur_yeux:       data.couleur_yeux,
-          signes_distinctifs: data.signes_distinctifs,
-          dernier_lieu:       data.dernier_lieu_vu,
-          ville:              data.ville_disparition,
-          date_disparition:   data.date_disparition,
-          description:        data.informations_complementaires,
-          statut:             data.statut_dossier ?? 'en_cours',
-          photo_url:          data.photo?.[0]?.url ?? null,
-          nb_vues:            data.nb_vues ?? 0,
-          niveau_urgence:     data.niveau_urgence,
+          id: dossierData.id,
+          nom: personneData?.nom ?? '',
+          prenom: personneData?.prenom ?? '',
+          age,
+          sexe: personneData?.sexe ?? null,
+          taille: personneData?.taille_cm ?? null,
+          poids: personneData?.poids_kg ?? null,
+          couleur_cheveux: personneData?.couleur_cheveux ?? null,
+          couleur_yeux: personneData?.couleur_yeux ?? null,
+          signes_distinctifs: personneData?.signes_distinctifs ?? null,
+          dernier_lieu: dossierData.lieu_disparition ?? null,
+          ville: dossierData.ville_disparition ?? null,
+          date_disparition: dossierData.date_disparition ?? null,
+          description: dossierData.circonstances ?? personneData?.description_physique ?? null,
+          statut: dossierData.statut_dossier ?? 'en_cours',
+          photo_url: personneData?.photo_principale ?? photoUrls[0] ?? null,
+          nb_vues: dossierData.nombre_vues_fiche ?? 0,
+          niveau_urgence: dossierData.niveau_urgence ?? null,
         });
 
-        setPhotos((data.photo ?? []).map((p: any) => p.url).filter(Boolean));
+        setPhotos(photoUrls);
 
         // Incrémenter nb_vues
         await supabase
-          .from('personne')
-          .update({ nb_vues: (data.nb_vues ?? 0) + 1 })
+          .from('dossier_disparition')
+          .update({ nombre_vues_fiche: (dossierData.nombre_vues_fiche ?? 0) + 1 })
           .eq('id', dossierId);
 
         // Chronologie (signalements liés)
         const { data: chron } = await supabase
           .from('signalement')
           .select('id, description, created_at, statut_validation')
-          .eq('id_personne', dossierId)
+          .eq('id_dossier', dossierId)
           .order('created_at', { ascending: false })
           .limit(20);
         setChronologie(chron ?? []);
@@ -145,34 +218,21 @@ export default function VoirDossier({ route, navigation }: any) {
     fetchDetail();
   }, [dossierId]);
 
-  const handlePartager = async () => {
-    if (!dossier) return;
-    try {
-      await Share.share({
-        message: `🔍 Personne disparue : ${dossier.prenom} ${dossier.nom}, ${dossier.age} ans. Dernière fois vu(e) à ${dossier.dernier_lieu ?? dossier.ville}. Aidez-nous à retrouver cette personne sur RetrouvonsLes.`,
-        title: `Disparition : ${dossier.prenom} ${dossier.nom}`,
-      });
-    } catch (e) {}
-  };
-
   if (loading || !dossier) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#1d4ed8" style={{ flex: 1 }} />
+        <ActivityIndicator size="large" color="#b45f06" style={{ flex: 1 }} />
       </SafeAreaView>
     );
   }
 
   const date = dossier.date_disparition
     ? new Date(dossier.date_disparition).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-    : '—';
+    : 'Date inconnue';
 
-  const urgenceColor = {
-    critique: '#ef4444',
-    eleve:    '#f97316',
-    moyen:    '#f59e0b',
-    faible:   '#16a34a',
-  }[dossier.niveau_urgence ?? 'faible'] ?? '#16a34a';
+  const ageText = dossier.age ? `${dossier.age} ans` : 'Âge inconnu';
+  const tailleText = dossier.taille ? `${dossier.taille} cm` : '—';
+  const poidsText = dossier.poids ? `${dossier.poids} kg` : '—';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -181,7 +241,7 @@ export default function VoirDossier({ route, navigation }: any) {
       {/* Header navigation */}
       <View style={styles.navBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.retourBtn}>
-          <Ionicons name="chevron-back" size={18} color="#1e3a5f" />
+          <Ionicons name="arrow-back" size={20} color="#0b1c30" />
           <Text style={styles.retourText}>Retour</Text>
         </TouchableOpacity>
       </View>
@@ -196,7 +256,7 @@ export default function VoirDossier({ route, navigation }: any) {
               <Image source={{ uri: dossier.photo_url }} style={styles.photo} />
             ) : (
               <View style={styles.photoPlaceholder}>
-                <Ionicons name="person" size={52} color="#93c5fd" />
+                <Ionicons name="person-outline" size={48} color="#cbd5e1" />
               </View>
             )}
           </View>
@@ -206,15 +266,11 @@ export default function VoirDossier({ route, navigation }: any) {
             <Text style={styles.nomComplet}>{dossier.prenom} {dossier.nom}</Text>
             <View style={styles.badgesRow}>
               <BadgeStatut statut={dossier.statut} />
-              {dossier.niveau_urgence && (
-                <Text style={[styles.urgence, { color: urgenceColor }]}>
-                  Niveau d'urgence : {dossier.niveau_urgence}
-                </Text>
-              )}
+              <BadgeUrgence niveau={dossier.niveau_urgence} />
             </View>
 
             {/* Meta */}
-            <View style={styles.metaRow}>
+            <View style={styles.metaContainer}>
               <View style={styles.metaItem}>
                 <Ionicons name="calendar-outline" size={14} color="#64748b" />
                 <Text style={styles.metaText}>Disparu depuis : {date}</Text>
@@ -233,24 +289,6 @@ export default function VoirDossier({ route, navigation }: any) {
 
         <View style={styles.divider} />
 
-        {/* ACTIONS */}
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={styles.btnSignaler}
-            onPress={() => navigation.navigate('Signalement', { dossier })}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="chatbubble-outline" size={18} color="#fff" />
-            <Text style={styles.btnSignalerText}>Signaler un témoignage</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.btnPartager} onPress={handlePartager} activeOpacity={0.85}>
-            <Ionicons name="share-social-outline" size={18} color="#1e3a5f" />
-            <Text style={styles.btnPartagerText}>Partager</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.divider} />
-
         {/* ONGLETS */}
         <View style={styles.onglets}>
           {(['infos', 'photos', 'chronologie'] as Onglet[]).map(o => (
@@ -262,8 +300,8 @@ export default function VoirDossier({ route, navigation }: any) {
             >
               <Ionicons
                 name={o === 'infos' ? 'information-circle-outline' : o === 'photos' ? 'images-outline' : 'time-outline'}
-                size={16}
-                color={onglet === o ? '#1d4ed8' : '#94a3b8'}
+                size={18}
+                color={onglet === o ? '#b45f06' : '#94a3b8'}
               />
               <Text style={[styles.ongletText, onglet === o && styles.ongletTextActive]}>
                 {o === 'infos' ? 'Informations' : o === 'photos' ? 'Photos' : 'Chronologie'}
@@ -276,25 +314,36 @@ export default function VoirDossier({ route, navigation }: any) {
 
           {/* ── ONGLET INFORMATIONS ── */}
           {onglet === 'infos' && (
-            <View style={{ gap: 20 }}>
+            <View style={{ gap: 24 }}>
 
               {/* Description physique */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Description physique</Text>
                 <View style={styles.physGrid}>
-                  {[
-                    { label: 'ÂGE',               value: dossier.age ? `${dossier.age} ans` : '—' },
-                    { label: 'SEXE',               value: dossier.sexe ?? '—' },
-                    { label: 'TAILLE',             value: dossier.taille ? `${dossier.taille} cm` : '—' },
-                    { label: 'POIDS',              value: dossier.poids ? `${dossier.poids} kg` : '—' },
-                    { label: 'COULEUR DES CHEVEUX', value: dossier.couleur_cheveux ?? '—' },
-                    { label: 'COULEUR DES YEUX',   value: dossier.couleur_yeux ?? '—' },
-                  ].map((item, i) => (
-                    <View key={i} style={styles.physItem}>
-                      <Text style={styles.physLabel}>{item.label}</Text>
-                      <Text style={styles.physValue}>{item.value}</Text>
-                    </View>
-                  ))}
+                  <View style={styles.physItem}>
+                    <Text style={styles.physLabel}>ÂGE</Text>
+                    <Text style={styles.physValue}>{ageText}</Text>
+                  </View>
+                  <View style={styles.physItem}>
+                    <Text style={styles.physLabel}>SEXE</Text>
+                    <Text style={styles.physValue}>{dossier.sexe === 'masculin' ? 'Homme' : dossier.sexe === 'feminin' ? 'Femme' : dossier.sexe ?? '—'}</Text>
+                  </View>
+                  <View style={styles.physItem}>
+                    <Text style={styles.physLabel}>TAILLE</Text>
+                    <Text style={styles.physValue}>{tailleText}</Text>
+                  </View>
+                  <View style={styles.physItem}>
+                    <Text style={styles.physLabel}>POIDS</Text>
+                    <Text style={styles.physValue}>{poidsText}</Text>
+                  </View>
+                  <View style={styles.physItem}>
+                    <Text style={styles.physLabel}>CHEVEUX</Text>
+                    <Text style={styles.physValue}>{dossier.couleur_cheveux ?? '—'}</Text>
+                  </View>
+                  <View style={styles.physItem}>
+                    <Text style={styles.physLabel}>YEUX</Text>
+                    <Text style={styles.physValue}>{dossier.couleur_yeux ?? '—'}</Text>
+                  </View>
                 </View>
               </View>
 
@@ -304,21 +353,13 @@ export default function VoirDossier({ route, navigation }: any) {
                   <Text style={styles.sectionTitle}>Dernier lieu où vu</Text>
                   <View style={styles.lieuCard}>
                     <View style={styles.lieuIconBox}>
-                      <Ionicons name="location" size={20} color="#1d4ed8" />
+                      <Ionicons name="location-outline" size={22} color="#b45f06" />
                     </View>
-                    <View>
-                      <Text style={styles.lieuNom}>{dossier.dernier_lieu ?? '—'}</Text>
-                      <Text style={styles.lieuVille}>{dossier.ville ?? '—'}</Text>
+                    <View style={styles.lieuTexts}>
+                      <Text style={styles.lieuNom}>{dossier.dernier_lieu ?? 'Lieu inconnu'}</Text>
+                      <Text style={styles.lieuVille}>{dossier.ville ?? ''}</Text>
                     </View>
                   </View>
-                </View>
-              )}
-
-              {/* Informations complémentaires */}
-              {dossier.description && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Informations complémentaires</Text>
-                  <Text style={styles.descText}>{dossier.description}</Text>
                 </View>
               )}
 
@@ -329,6 +370,22 @@ export default function VoirDossier({ route, navigation }: any) {
                   <Text style={styles.descText}>{dossier.signes_distinctifs}</Text>
                 </View>
               )}
+
+              {/* Vêtements portés */}
+              {dossier.description && dossier.description.includes('Vêtements') && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Vêtements portés</Text>
+                  <Text style={styles.descText}>{dossier.description}</Text>
+                </View>
+              )}
+
+              {/* Informations complémentaires */}
+              {dossier.description && !dossier.description.includes('Vêtements') && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Informations complémentaires</Text>
+                  <Text style={styles.descText}>{dossier.description}</Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -337,7 +394,7 @@ export default function VoirDossier({ route, navigation }: any) {
             <View>
               {photos.length === 0 ? (
                 <View style={styles.empty}>
-                  <Ionicons name="images-outline" size={48} color="#cbd5e1" />
+                  <Ionicons name="images-outline" size={52} color="#cbd5e1" />
                   <Text style={styles.emptyText}>Aucune photo disponible</Text>
                 </View>
               ) : (
@@ -355,7 +412,7 @@ export default function VoirDossier({ route, navigation }: any) {
             <View>
               {chronologie.length === 0 ? (
                 <View style={styles.empty}>
-                  <Ionicons name="time-outline" size={48} color="#cbd5e1" />
+                  <Ionicons name="time-outline" size={52} color="#cbd5e1" />
                   <Text style={styles.emptyText}>Aucun témoignage enregistré</Text>
                 </View>
               ) : (
@@ -398,98 +455,105 @@ const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: '#f8fafc' },
 
   navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    paddingTop: Platform.OS === 'android' ? 40 : 10,
-    backgroundColor: '#f8fafc',
+    paddingVertical: 12,
+    paddingTop: Platform.OS === 'android' ? 40 : 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
-  retourBtn:  { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
-  retourText: { fontSize: 14, color: '#1e3a5f', fontWeight: '600' },
+  retourBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  retourText: { fontSize: 15, color: '#0b1c30', fontWeight: '600' },
 
   hero: {
-    flexDirection: 'row', gap: 16,
-    paddingHorizontal: 20, paddingVertical: 16,
+    flexDirection: 'row',
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     backgroundColor: '#fff',
   },
-  photoBox:        { width: 110, height: 130 },
-  photo:           { width: 110, height: 130, borderRadius: 12, resizeMode: 'cover' },
-  photoPlaceholder:{ width: 110, height: 130, borderRadius: 12, backgroundColor: '#dbeafe', justifyContent: 'center', alignItems: 'center' },
-  identite:        { flex: 1, justifyContent: 'flex-start', gap: 8 },
-  nomComplet:      { fontSize: 20, fontWeight: '800', color: '#1e3a5f', lineHeight: 24 },
-  badgesRow:       { gap: 6 },
-  urgence:         { fontSize: 13, fontWeight: '700' },
-  metaRow:         { gap: 5, marginTop: 4 },
-  metaItem:        { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  photoBox:        { width: 110, height: 130, borderRadius: 14, overflow: 'hidden' },
+  photo:           { width: 110, height: 130, resizeMode: 'cover' },
+  photoPlaceholder: { width: 110, height: 130, borderRadius: 14, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
+  identite:        { flex: 1, justifyContent: 'center', gap: 8 },
+  nomComplet:      { fontSize: 20, fontWeight: '800', color: '#0b1c30', lineHeight: 26 },
+  badgesRow:       { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  metaContainer:   { gap: 6, marginTop: 6 },
+  metaItem:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
   metaText:        { fontSize: 12, color: '#64748b' },
 
   divider: { height: 1, backgroundColor: '#e2e8f0' },
 
-  actionsRow: {
-    flexDirection: 'row', gap: 0,
-    backgroundColor: '#fff',
-  },
-  btnSignaler: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 16, backgroundColor: '#1d4ed8',
-  },
-  btnSignalerText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  btnPartager: {
-    flex: 0.45, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 16, backgroundColor: '#fff',
-    borderLeftWidth: 1, borderLeftColor: '#e2e8f0',
-  },
-  btnPartagerText: { fontSize: 14, fontWeight: '700', color: '#1e3a5f' },
-
   onglets: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
   ongletBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 14,
-    borderBottomWidth: 2, borderBottomColor: 'transparent',
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderBottomWidth: 2.5,
+    borderBottomColor: 'transparent',
   },
-  ongletBtnActive: { borderBottomColor: '#1d4ed8' },
-  ongletText:      { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
-  ongletTextActive:{ color: '#1d4ed8' },
+  ongletBtnActive: { borderBottomColor: '#b45f06' },
+  ongletText:      { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
+  ongletTextActive: { color: '#b45f06' },
 
   ongletContent: { padding: 20, paddingBottom: 60 },
 
   section:      { gap: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: '#1e3a5f' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: '#0b1c30', letterSpacing: 0.3 },
 
-  physGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  physGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 20, rowGap: 16 },
   physItem:  { minWidth: (width - 80) / 3 },
-  physLabel: { fontSize: 10, color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 },
-  physValue: { fontSize: 14, fontWeight: '700', color: '#1e3a5f' },
+  physLabel: { fontSize: 10, color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
+  physValue: { fontSize: 14, fontWeight: '700', color: '#0b1c30' },
 
   lieuCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#f8fafc', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#e2e8f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   lieuIconBox: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: '#dbeafe', justifyContent: 'center', alignItems: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  lieuNom:   { fontSize: 14, fontWeight: '700', color: '#1e3a5f' },
+  lieuTexts: { flex: 1 },
+  lieuNom:   { fontSize: 14, fontWeight: '700', color: '#0b1c30' },
   lieuVille: { fontSize: 12, color: '#64748b', marginTop: 2 },
 
-  descText: { fontSize: 14, color: '#475569', lineHeight: 21 },
+  descText: { fontSize: 14, color: '#475569', lineHeight: 22 },
 
-  photosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  photoThumb: { width: (width - 64) / 3, height: (width - 64) / 3, borderRadius: 10 },
+  photosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  photoThumb: { width: (width - 64) / 3, height: (width - 64) / 3, borderRadius: 12, backgroundColor: '#f1f5f9' },
 
   chronItem:    { flexDirection: 'row', gap: 14, paddingBottom: 20, position: 'relative' },
-  chronDot:     { width: 12, height: 12, borderRadius: 6, backgroundColor: '#1d4ed8', marginTop: 4, flexShrink: 0 },
-  chronLine:    { position: 'absolute', left: 5.5, top: 16, bottom: 0, width: 1, backgroundColor: '#dbeafe' },
+  chronDot:     { width: 12, height: 12, borderRadius: 6, backgroundColor: '#b45f06', marginTop: 4, flexShrink: 0 },
+  chronLine:    { position: 'absolute', left: 5.5, top: 16, bottom: 0, width: 1.5, backgroundColor: '#e2e8f0' },
   chronContent: { flex: 1, gap: 6 },
   chronDate:    { fontSize: 12, color: '#94a3b8', fontWeight: '600' },
-  chronDesc:    { fontSize: 13, color: '#1e3a5f', lineHeight: 18 },
+  chronDesc:    { fontSize: 13, color: '#0b1c30', lineHeight: 18 },
   chronBadge:   { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   chronBadgeTxt:{ fontSize: 11, fontWeight: '700' },
 
-  empty:     { alignItems: 'center', paddingVertical: 40, gap: 10 },
+  empty:     { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyText: { fontSize: 14, color: '#94a3b8' },
 });

@@ -2,52 +2,52 @@ import React, { useState } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, SafeAreaView,
   TouchableOpacity, StatusBar, TextInput, ActivityIndicator,
-  Platform, Alert, Image, Modal, Dimensions, PermissionsAndroid,
+  Platform, Alert, Image, Modal, PermissionsAndroid,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { WebView } from 'react-native-webview';
 import { supabase } from '../../../services/supabase';
 
-const { width } = Dimensions.get('window');
 const MAPTILER_KEY = 'QC2faDaY0B4wB6W510Cu';
 
-// ─── TYPES ───
-interface PhotoItem {
-  uri: string;
-  name: string;
-  type: string;
-}
+interface PhotoItem { uri: string; name: string; type: string; }
 
 interface FormData {
-  description:           string;
-  date_observation:      string;
-  heure_observation:     string;
-  lieu_observation:      string;
-  ville_observation:     string;
-  region_observation:    string;
-  latitude:              number | null;
-  longitude:             number | null;
-  niveau_certitude:      string;
-  contexte_observation:  string;
-  direction_deplacement: string;
-  photos:                PhotoItem[];
+  prenom: string; nom: string; age: string; genre: string;
+  description_physique: string; vetements: string;
+  date_disparition: string; heure_disparition: string;
+  lieu_disparition: string;
+  latitude: number | null; longitude: number | null;
+  photos: PhotoItem[];
+  type_urgence: 'critique' | 'urgent' | 'normal';
 }
 
-const CERTITUDES = [
-  { key: 'certain',       label: 'Certain'       },
-  { key: 'tres_probable', label: 'Très probable' },
-  { key: 'probable',      label: 'Probable'      },
-  { key: 'incertain',     label: 'Incertain'     },
-  { key: 'doute',         label: 'Doute'         },
+const TYPES_DISPARITION = [
+  { key: 'critique', label: 'Kidnapping / Enlèvement',   alerteImmediate: true  },
+  { key: 'urgent',   label: 'Viol / Agression sexuelle', alerteImmediate: true  },
+  { key: 'normal',   label: 'Disparition simple',        alerteImmediate: false },
 ];
 
-// ─── MAPTILER HTML ───
+const GENRES = [
+  { key: 'masculin',    label: 'Homme'      },
+  { key: 'feminin',     label: 'Femme'      },
+  { key: 'non_precise', label: 'Non précisé' },
+];
+
+// ─── HAVERSINE ───
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371, RAD = Math.PI / 180;
+  const dLat = (lat2 - lat1) * RAD, dLon = (lon2 - lon1) * RAD;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*RAD)*Math.cos(lat2*RAD)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── MAP HTML ───
 function buildMapHTML(latitude: number | null, longitude: number | null): string {
   const markerJS = latitude && longitude ? `
     var marker = new maplibregl.Marker({ color: '#1d4ed8', draggable: true })
-      .setLngLat([${longitude}, ${latitude}])
-      .addTo(map);
+      .setLngLat([${longitude}, ${latitude}]).addTo(map);
     marker.on('dragend', function() {
       var ll = marker.getLngLat();
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'marker_move', lat: ll.lat, lng: ll.lng }));
@@ -55,150 +55,124 @@ function buildMapHTML(latitude: number | null, longitude: number | null): string
     map.flyTo({ center: [${longitude}, ${latitude}], zoom: 14 });
   ` : '';
 
-  return `
-    <!DOCTYPE html><html>
+  return `<!DOCTYPE html><html>
     <head>
       <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no"/>
       <script src="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.js"></script>
       <link href="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.css" rel="stylesheet"/>
       <style>* { margin:0; padding:0; box-sizing:border-box; } html,body,#map { width:100%; height:100%; }</style>
     </head>
-    <body>
-      <div id="map"></div>
-      <script>
-        var marker = null;
-        var map = new maplibregl.Map({
-          container: 'map',
-          style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}',
-          center: [11.5021, 3.8480],
-          zoom: 11,
-        });
-        map.addControl(new maplibregl.NavigationControl(), 'top-right');
-        map.addControl(new maplibregl.GeolocateControl({
-          positionOptions: { enableHighAccuracy: true },
-          trackUserLocation: false,
-        }), 'top-right');
-        map.on('load', function() { ${markerJS} });
-        map.on('click', function(e) {
-          var lat = e.lngLat.lat, lng = e.lngLat.lng;
-          if (marker) {
-            marker.setLngLat([lng, lat]);
-          } else {
-            marker = new maplibregl.Marker({ color: '#1d4ed8', draggable: true })
-              .setLngLat([lng, lat]).addTo(map);
-            marker.on('dragend', function() {
-              var ll = marker.getLngLat();
-              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'marker_move', lat: ll.lat, lng: ll.lng }));
-            });
-          }
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map_click', lat: lat, lng: lng }));
-        });
-      </script>
-    </body></html>
-  `;
+    <body><div id="map"></div>
+    <script>
+      var marker = null;
+      var map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}',
+        center: [11.5021, 3.8480], zoom: 11,
+      });
+      map.addControl(new maplibregl.NavigationControl(), 'top-right');
+      map.on('load', function() { ${markerJS} });
+      map.on('click', function(e) {
+        var lat = e.lngLat.lat, lng = e.lngLat.lng;
+        if (marker) { marker.setLngLat([lng, lat]); }
+        else {
+          marker = new maplibregl.Marker({ color: '#1d4ed8', draggable: true })
+            .setLngLat([lng, lat]).addTo(map);
+          marker.on('dragend', function() {
+            var ll = marker.getLngLat();
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'marker_move', lat: ll.lat, lng: ll.lng }));
+          });
+        }
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map_click', lat: lat, lng: lng }));
+      });
+    </script></body></html>`;
 }
 
-// ─── HEADER ───
-function Header({ navigation, titre }: any) {
+// ─── BANDEAU URGENCE ───
+function BandeauUrgence() {
   return (
-    <View style={hS.wrapper}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={hS.back} activeOpacity={0.7}>
-        <Ionicons name="arrow-back" size={22} color="#1e3a5f" />
-      </TouchableOpacity>
-      <View style={hS.center}>
-        <Text style={hS.title} numberOfLines={1}>{titre ?? 'Nouveau signalement'}</Text>
-        <Text style={hS.sub}>Déclarez votre observation</Text>
+    <View style={urgS.wrapper}>
+      <View style={urgS.left}>
+        <Ionicons name="warning-outline" size={18} color="#b45309" />
+        <View>
+          <Text style={urgS.titre}>URGENCE IMMÉDIATE :</Text>
+          <Text style={urgS.sub}>Contactez les autorités</Text>
+        </View>
       </View>
-      <View style={{ width: 40 }} />
+      <TouchableOpacity style={urgS.btn} activeOpacity={0.85}>
+        <Ionicons name="call" size={15} color="#fff" />
+        <Text style={urgS.btnTxt}>APPELER{'\n'}LE 17</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+const urgS = StyleSheet.create({
+  wrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fefce8', borderRadius: 12, padding: 14, marginBottom: 18, borderWidth: 1, borderColor: '#fde68a' },
+  left:    { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  titre:   { fontSize: 12, fontWeight: '800', color: '#92400e' },
+  sub:     { fontSize: 11, color: '#b45309', marginTop: 1 },
+  btn:     { backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  btnTxt:  { color: '#fff', fontSize: 11, fontWeight: '800', textAlign: 'center' },
+});
+
+// ─── SECTION HEADER ───
+function SectionHeader({ icon, label }: { icon: string; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+      <Ionicons name={icon as any} size={13} color="#64748b" />
+      <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', letterSpacing: 0.9, textTransform: 'uppercase' }}>{label}</Text>
     </View>
   );
 }
 
-const hS = StyleSheet.create({
-  wrapper: {
-    backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12,
-    paddingTop: Platform.OS === 'android' ? 44 : 12,
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0',
-    elevation: 3, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4,
-  },
-  back:   { width: 40, height: 40, justifyContent: 'center' },
-  center: { flex: 1, alignItems: 'center' },
-  title:  { fontSize: 15, fontWeight: '800', color: '#1e3a5f' },
-  sub:    { fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 1 },
-});
-
-// ─── CHAMP LABEL ───
-function ChampLabel({ label, required }: { label: string; required?: boolean }) {
-  return (
-    <Text style={fS.label}>
-      {label}{required && <Text style={{ color: '#ef4444' }}> *</Text>}
-    </Text>
-  );
-}
-
 // ─── CHAMP INPUT ───
-function ChampInput({ label, required, placeholder, value, onChangeText, multiline, keyboardType, icon }: any) {
+function ChampInput({ label, placeholder, value, onChangeText, multiline, keyboardType, icon, style: ext }: any) {
   return (
-    <View style={fS.champ}>
-      <ChampLabel label={label} required={required} />
-      <View style={[fS.inputWrapper, multiline && { height: 100, alignItems: 'flex-start' }]}>
-        {icon && <Ionicons name={icon} size={16} color="#94a3b8" style={fS.inputIcon} />}
+    <View style={[inS.wrapper, ext]}>
+      {label ? <Text style={inS.label}>{label}</Text> : null}
+      <View style={[inS.box, multiline && { height: 90, alignItems: 'flex-start' }]}>
+        {icon && <Ionicons name={icon} size={14} color="#94a3b8" style={{ marginRight: 8 }} />}
         <TextInput
-          style={[fS.input, multiline && { height: 90, textAlignVertical: 'top' }]}
-          placeholder={placeholder}
-          placeholderTextColor="#cbd5e1"
-          value={value}
-          onChangeText={onChangeText}
-          multiline={multiline}
-          keyboardType={keyboardType ?? 'default'}
-          autoCorrect={false}
+          style={[inS.input, multiline && { height: 80, textAlignVertical: 'top' }]}
+          placeholder={placeholder} placeholderTextColor="#cbd5e1"
+          value={value} onChangeText={onChangeText}
+          multiline={multiline} keyboardType={keyboardType ?? 'default'} autoCorrect={false}
         />
       </View>
     </View>
   );
 }
-
-const fS = StyleSheet.create({
-  champ:        { marginBottom: 20 },
-  label:        { fontSize: 13, fontWeight: '700', color: '#1e3a5f', marginBottom: 8 },
-  inputWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 12,
-    borderWidth: 1, borderColor: '#e2e8f0',
-    paddingHorizontal: 14, paddingVertical: 11, minHeight: 48,
-  },
-  inputIcon: { marginRight: 8 },
-  input:     { flex: 1, fontSize: 14, color: '#1e3a5f', padding: 0 },
+const inS = StyleSheet.create({
+  wrapper: { marginBottom: 10 },
+  label:   { fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 5 },
+  box:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, paddingVertical: 10, minHeight: 44 },
+  input:   { flex: 1, fontSize: 13, color: '#1e293b', padding: 0 },
 });
 
-// ─── SÉLECTEUR CERTITUDE ───
-function SelecteurCertitude({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// ─── SÉLECTEUR GENRE ───
+function SelecteurGenre({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
-  const current = CERTITUDES.find(c => c.key === value);
-
+  const current = GENRES.find(g => g.key === value);
   return (
-    <View style={fS.champ}>
-      <ChampLabel label="Niveau de certitude" />
-      <TouchableOpacity style={selS.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
-        <Text style={selS.triggerTxt}>{current?.label ?? 'Sélectionner...'}</Text>
-        <Ionicons name="chevron-down" size={16} color="#64748b" />
+    <View style={{ flex: 1, marginBottom: 10 }}>
+      <Text style={inS.label}>Genre</Text>
+      <TouchableOpacity style={[inS.box, { justifyContent: 'space-between' }]} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={{ fontSize: 13, color: current ? '#1e293b' : '#cbd5e1' }}>{current?.label ?? 'Sélectionner'}</Text>
+        <Ionicons name="chevron-down" size={14} color="#94a3b8" />
       </TouchableOpacity>
-
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={selS.overlay} activeOpacity={1} onPress={() => setOpen(false)}>
-          <View style={selS.sheet}>
-            <View style={selS.handle} />
-            <Text style={selS.sheetTitle}>Niveau de certitude</Text>
-            {CERTITUDES.map(c => (
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
+            <View style={{ width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e3a5f', marginBottom: 12 }}>Genre</Text>
+            {GENRES.map(g => (
               <TouchableOpacity
-                key={c.key}
-                style={[selS.option, value === c.key && selS.optionActive]}
-                onPress={() => { onChange(c.key); setOpen(false); }}
+                key={g.key}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', ...(value === g.key && { backgroundColor: '#eff6ff', marginHorizontal: -24, paddingHorizontal: 24 }) }}
+                onPress={() => { onChange(g.key); setOpen(false); }}
               >
-                <Text style={[selS.optionTxt, value === c.key && selS.optionTxtActive]}>{c.label}</Text>
-                {value === c.key && <Ionicons name="checkmark" size={18} color="#1d4ed8" />}
+                <Text style={{ fontSize: 14, color: value === g.key ? '#1d4ed8' : '#475569', fontWeight: value === g.key ? '700' : '400' }}>{g.label}</Text>
+                {value === g.key && <Ionicons name="checkmark" size={18} color="#1d4ed8" />}
               </TouchableOpacity>
             ))}
           </View>
@@ -208,95 +182,38 @@ function SelecteurCertitude({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
-const selS = StyleSheet.create({
-  trigger: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0',
-    paddingHorizontal: 14, paddingVertical: 13,
-  },
-  triggerTxt:      { fontSize: 14, color: '#1e3a5f' },
-  overlay:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet:           { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  handle:          { width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  sheetTitle:      { fontSize: 15, fontWeight: '700', color: '#1e3a5f', marginBottom: 16 },
-  option:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  optionActive:    { backgroundColor: '#eff6ff', marginHorizontal: -24, paddingHorizontal: 24 },
-  optionTxt:       { fontSize: 14, color: '#475569' },
-  optionTxtActive: { color: '#1d4ed8', fontWeight: '700' },
-});
-
-// ─── CARTE MAPTILER ───
-function CarteLocalisation({
-  latitude, longitude, onPress, onGeolocate, loading,
-}: {
-  latitude: number | null;
-  longitude: number | null;
-  onPress: (lat: number, lng: number) => void;
-  onGeolocate: () => void;
-  loading: boolean;
-}) {
-  const mapHTML = buildMapHTML(latitude, longitude);
-
-  const handleMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'map_click' || data.type === 'marker_move') {
-        onPress(data.lat, data.lng);
-      }
-    } catch (e) {
-      console.warn('Message carte:', e);
-    }
-  };
-
+// ─── SÉLECTEUR TYPE DISPARITION ───
+function SelecteurTypeDisparition({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const current = TYPES_DISPARITION.find(t => t.key === value);
   return (
-    <View style={mapS.wrapper}>
-      <WebView
-        key={`map-${latitude}-${longitude}`}
-        originWhitelist={['*']}
-        source={{ html: mapHTML }}
-        style={{ flex: 1 }}
-        javaScriptEnabled
-        onMessage={handleMessage}
-      />
-
-      {/* Bouton géolocalisation React Native */}
-      <TouchableOpacity style={mapS.geoBtn} onPress={onGeolocate} activeOpacity={0.85}>
-        {loading
-          ? <ActivityIndicator size="small" color="#fff" />
-          : <Ionicons name="navigate" size={18} color="#fff" />
-        }
+    <View style={{ marginBottom: 6 }}>
+      <Text style={[inS.label, { fontWeight: '700' }]}>Type de disparition *</Text>
+      <TouchableOpacity style={[inS.box, { justifyContent: 'space-between' }]} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={{ fontSize: 13, color: current ? '#1e293b' : '#94a3b8' }}>{current?.label ?? 'Sélectionner le type'}</Text>
+        <Ionicons name="chevron-down" size={14} color="#94a3b8" />
       </TouchableOpacity>
-
-      {/* Hint si pas encore de position */}
-      {!latitude && (
-        <View style={mapS.hint}>
-          <Text style={mapS.hintTxt}>Appuyez sur la carte pour définir l'emplacement</Text>
-        </View>
-      )}
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
+            <View style={{ width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0b1c30', marginBottom: 16 }}>Type de disparition</Text>
+            {TYPES_DISPARITION.map(t => (
+              <TouchableOpacity
+                key={t.key}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: value === t.key ? '#f0fdf4' : 'transparent', marginHorizontal: -24, paddingHorizontal: 24 }}
+                onPress={() => { onChange(t.key); setOpen(false); }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: value === t.key ? '600' : '400', color: value === t.key ? '#166534' : '#475569' }}>{t.label}</Text>
+                {value === t.key && <Ionicons name="checkmark" size={18} color="#166534" />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
-
-const mapS = StyleSheet.create({
-  wrapper: {
-    height: 220, borderRadius: 14, overflow: 'hidden',
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 6,
-  },
-  geoBtn: {
-    position: 'absolute', bottom: 12, right: 12,
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#1d4ed8',
-    justifyContent: 'center', alignItems: 'center',
-    elevation: 4, shadowColor: '#1d4ed8',
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 6,
-  },
-  hint: {
-    position: 'absolute', bottom: 12, left: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  hintTxt: { color: '#fff', fontSize: 11 },
-});
 
 // ─── UPLOAD PHOTOS ───
 function UploadPhotos({ photos, onAdd, onRemove }: {
@@ -305,391 +222,397 @@ function UploadPhotos({ photos, onAdd, onRemove }: {
   onRemove: (i: number) => void;
 }) {
   const handlePick = async () => {
-    const result = await launchImageLibrary({
-      mediaType: 'photo',
-      quality: 0.8,
-      selectionLimit: 5,
-    });
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 5 });
     if (result.assets) {
       result.assets.forEach(asset => {
-        if (asset.uri) {
-          onAdd({
-            uri:  asset.uri,
-            name: asset.fileName ?? `photo_${Date.now()}.jpg`,
-            type: asset.type ?? 'image/jpeg',
-          });
-        }
+        if (asset.uri) onAdd({ uri: asset.uri, name: asset.fileName ?? `photo_${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' });
       });
     }
   };
-
   return (
-    <View style={upS.wrapper}>
-      <ChampLabel label="Joindre des photos" />
-      <TouchableOpacity style={upS.dropzone} onPress={handlePick} activeOpacity={0.8}>
-        <Ionicons name="cloud-upload-outline" size={32} color="#1d4ed8" />
-        <Text style={upS.dropText}>Cliquez pour ajouter des fichiers</Text>
-        <Text style={upS.dropSub}>JPG, PNG, WEBP — Max 10 Mo</Text>
+    <View>
+      <TouchableOpacity style={upS.zone} onPress={handlePick} activeOpacity={0.8}>
+        <Ionicons name="camera-outline" size={38} color="#94a3b8" />
+        <Text style={upS.zoneTxt}>Ajouter des photos</Text>
       </TouchableOpacity>
-
-      {photos.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {photos.map((p, i) => (
-              <View key={i} style={upS.thumb}>
-                <Image source={{ uri: p.uri }} style={upS.thumbImg} />
-                <TouchableOpacity style={upS.thumbRemove} onPress={() => onRemove(i)}>
-                  <Ionicons name="close-circle" size={20} color="#ef4444" />
-                </TouchableOpacity>
-              </View>
-            ))}
+      <View style={upS.thumbsRow}>
+        {photos.map((p, i) => (
+          <View key={i} style={{ position: 'relative' }}>
+            <Image source={{ uri: p.uri }} style={upS.thumbImg} />
+            <TouchableOpacity style={upS.remove} onPress={() => onRemove(i)}>
+              <Ionicons name="close-circle" size={18} color="#ef4444" />
+            </TouchableOpacity>
           </View>
-        </ScrollView>
-      )}
+        ))}
+        {Array.from({ length: Math.max(0, 3 - photos.length) }).map((_, i) => (
+          <TouchableOpacity key={`e${i}`} style={upS.emptyThumb} onPress={handlePick} />
+        ))}
+      </View>
+      <Text style={upS.hint}>Privilégiez des photos récentes et claires du visage.</Text>
     </View>
   );
 }
-
 const upS = StyleSheet.create({
-  wrapper:     { marginBottom: 20 },
-  dropzone: {
-    borderWidth: 1.5, borderColor: '#cbd5e1', borderStyle: 'dashed',
-    borderRadius: 14, padding: 28, alignItems: 'center', gap: 8,
-    backgroundColor: '#f8fafc',
-  },
-  dropText:    { fontSize: 14, fontWeight: '600', color: '#1e3a5f' },
-  dropSub:     { fontSize: 11, color: '#94a3b8' },
-  thumb:       { position: 'relative' },
-  thumbImg:    { width: 80, height: 80, borderRadius: 10, resizeMode: 'cover' },
-  thumbRemove: { position: 'absolute', top: -6, right: -6 },
+  zone:       { height: 130, borderWidth: 1.5, borderColor: '#cbd5e1', borderStyle: 'dashed', borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#f8fafc', marginBottom: 12 },
+  zoneTxt:    { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+  thumbsRow:  { flexDirection: 'row', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+  thumbImg:   { width: 72, height: 72, borderRadius: 8, resizeMode: 'cover' },
+  remove:     { position: 'absolute', top: -6, right: -6, backgroundColor: 'white', borderRadius: 10 },
+  emptyThumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  hint:       { fontSize: 11, color: '#94a3b8', textAlign: 'center', fontStyle: 'italic' },
+});
+
+// ─── CARTE ───
+function CarteLocalisation({ latitude, longitude, onPress, onGeolocate, loading }: {
+  latitude: number | null; longitude: number | null;
+  onPress: (lat: number, lng: number) => void;
+  onGeolocate: () => void; loading: boolean;
+}) {
+  const handleMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'map_click' || data.type === 'marker_move') onPress(data.lat, data.lng);
+    } catch (e) {}
+  };
+  return (
+    <View>
+      <View style={mapS.wrapper}>
+        <WebView
+          key={`map-${latitude}-${longitude}`}
+          originWhitelist={['*']}
+          source={{ html: buildMapHTML(latitude, longitude) }}
+          style={{ flex: 1 }}
+          javaScriptEnabled
+          onMessage={handleMessage}
+        />
+        {!latitude && (
+          <TouchableOpacity style={mapS.centerBtn} onPress={onGeolocate} activeOpacity={0.85}>
+            {loading
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <><Ionicons name="location" size={15} color="#fff" /><Text style={mapS.centerBtnTxt}>Cliquer pour localiser</Text></>
+            }
+          </TouchableOpacity>
+        )}
+      </View>
+      {latitude && <Text style={mapS.coords}>📍 {latitude.toFixed(5)}, {longitude?.toFixed(5)}</Text>}
+    </View>
+  );
+}
+const mapS = StyleSheet.create({
+  wrapper:      { height: 200, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 6, position: 'relative' },
+  centerBtn:    { position: 'absolute', top: '38%', alignSelf: 'center', left: '50%', transform: [{ translateX: -80 }], flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1e293b', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10, elevation: 4 },
+  centerBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  coords:       { fontSize: 11, color: '#1d4ed8', fontWeight: '600', marginBottom: 8, textAlign: 'center' },
 });
 
 // ─── ÉCRAN PRINCIPAL ───
 export default function NouveauSignalement({ navigation, route }: any) {
-  const dossierParam = route?.params?.dossier;
-  const dossierId    = route?.params?.dossierId ?? dossierParam?.id;
+  const dossierId = route?.params?.dossierId ?? route?.params?.dossier?.id;
 
   const [form, setForm] = useState<FormData>({
-    description:           '',
-    date_observation:      new Date().toLocaleDateString('fr-FR'),
-    heure_observation:     new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-    lieu_observation:      '',
-    ville_observation:     '',
-    region_observation:    '',
-    latitude:              null,
-    longitude:             null,
-    niveau_certitude:      'probable',
-    contexte_observation:  '',
-    direction_deplacement: '',
-    photos:                [],
+    prenom: '', nom: '', age: '', genre: 'non_precise',
+    description_physique: '', vetements: '',
+    date_disparition:  new Date().toLocaleDateString('fr-FR'),
+    heure_disparition: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    lieu_disparition: '', latitude: null, longitude: null,
+    photos: [], type_urgence: 'normal',
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [errors, setErrors]         = useState<Record<string, string>>({});
 
-  const set = (key: keyof FormData, val: any) =>
-    setForm(prev => ({ ...prev, [key]: val }));
+  const set = (key: keyof FormData, val: any) => setForm(prev => ({ ...prev, [key]: val }));
 
-  // ─── GÉOLOCALISATION ───
+  // ── GÉOLOCALISATION ──
   const handleGeolocate = async () => {
     setGeoLoading(true);
-
     if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-      );
-      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        Alert.alert('Permission refusée', 'Activez la localisation dans les paramètres.');
-        setGeoLoading(false);
-        return;
-      }
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          { title: 'Permission de localisation', message: "L'application a besoin de votre position.", buttonNeutral: 'Plus tard', buttonNegative: 'Annuler', buttonPositive: 'OK' }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert('Permission refusée', 'Activez la localisation dans les paramètres.');
+          setGeoLoading(false); return;
+        }
+      } catch (err) { setGeoLoading(false); return; }
     }
-
     navigation.geolocation.getCurrentPosition(
-      (pos: { coords: { latitude: any; longitude: any; }; }) => {
-        set('latitude',  pos.coords.latitude);
-        set('longitude', pos.coords.longitude);
+      (pos: any) => { set('latitude', pos.coords.latitude); set('longitude', pos.coords.longitude); setGeoLoading(false); },
+      (err: any) => {
         setGeoLoading(false);
+        const msgs: Record<number, string> = { 1: 'Permission refusée.', 2: 'Position indisponible.', 3: 'Délai dépassé.' };
+        Alert.alert('Géolocalisation', msgs[err.code] ?? 'Impossible de récupérer votre position.');
       },
-      (err: { message: any; }) => {
-        console.warn('Géoloc:', err.message);
-        setGeoLoading(false);
-        Alert.alert('Géolocalisation', 'Impossible de récupérer votre position.');
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
     );
   };
 
-  // ─── VALIDATION ───
+  // ── VALIDATION ──
   const valider = (): boolean => {
     const e: Record<string, string> = {};
-    if (!form.description.trim())       e.description  = 'La description est obligatoire';
-    if (!form.date_observation.trim())  e.date         = 'La date est obligatoire';
+    if (!form.prenom.trim()) e.prenom = 'Le prénom est obligatoire';
+    if (!form.nom.trim())    e.nom    = 'Le nom est obligatoire';
     if (!form.latitude || !form.longitude) e.localisation = 'Veuillez sélectionner un emplacement sur la carte';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  // ─── SOUMISSION ───
-  const handleSubmit = async () => {
-    if (!valider()) {
-      Alert.alert('Formulaire incomplet', 'Veuillez remplir tous les champs obligatoires.');
-      return;
+  // ── NOTIFICATIONS GÉOLOCALISÉES ──
+  const envoyerNotifications = async (
+    dossierIdParam: string, userId: string,
+    lat: number, lng: number,
+    prenom: string, nom: string,
+  ) => {
+    try {
+      const { data: utilisateurs } = await supabase
+        .from('utilisateur')
+        .select('id, latitude_actuelle, longitude_actuelle')
+        .neq('id', userId);
+
+      if (!utilisateurs?.length) return;
+
+      const proches: string[] = [], lointains: string[] = [];
+      for (const u of utilisateurs) {
+        if (u.latitude_actuelle && u.longitude_actuelle) {
+          haversineKm(lat, lng, u.latitude_actuelle, u.longitude_actuelle) <= 50
+            ? proches.push(u.id)
+            : lointains.push(u.id);
+        } else {
+          lointains.push(u.id);
+        }
+      }
+
+      const notifs = [...proches, ...lointains].map(uid => ({
+        id_utilisateur:    uid,
+        type_notification: 'nouvelle_alerte',
+        titre:             `Disparition signalée - ${prenom} ${nom}`,
+        message:           `Un signalement a été soumis pour ${prenom} ${nom}. Restez vigilant.`,
+        canal:             'in_app',
+        lue:               false,
+        priorite:          proches.includes(uid) ? 'haute' : 'moyenne',
+        id_dossier:        dossierIdParam,
+      }));
+
+      for (let i = 0; i < notifs.length; i += 100) {
+        const { error } = await supabase.from('notification').insert(notifs.slice(i, i + 100));
+        if (error) console.warn('Erreur insert notifications:', error.message);
+      }
+    } catch (err) {
+      console.warn('Erreur notifications:', err);
     }
+  };
+
+  // ── SOUMISSION ──
+  const handleSubmit = async () => {
+    if (!valider()) { Alert.alert('Formulaire incomplet', 'Veuillez remplir tous les champs obligatoires.'); return; }
 
     try {
       setSubmitting(true);
-
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Non connecté', 'Vous devez être connecté pour signaler.');
-        return;
-      }
+      if (!user) { Alert.alert('Non connecté', 'Vous devez être connecté.'); return; }
 
-      // Construire la date ISO
-      const [jour, mois, annee] = form.date_observation.split('/');
-      const dateISO = new Date(
-        `${annee}-${mois}-${jour}T${form.heure_observation}:00`
-      ).toISOString();
+      const typeInfo  = TYPES_DISPARITION.find(t => t.key === form.type_urgence);
+      const estUrgent = typeInfo?.alerteImmediate ?? false;
 
-      // Insertion signalement
-      const { data: signalement, error: errSignal } = await supabase
-        .from('signalement')
+      // 1. Créer la personne
+      const { data: personne, error: errPersonne } = await supabase
+        .from('personne')
         .insert({
-          description:           form.description.trim(),
-          date_observation:      dateISO,
-          lieu_observation:      form.lieu_observation.trim()      || null,
-          ville_observation:     form.ville_observation.trim()     || null,
-          region_observation:    form.region_observation.trim()    || null,
-          latitude_observation:  form.latitude,
-          longitude_observation: form.longitude,
-          contexte_observation:  form.contexte_observation.trim()  || null,
-          direction_deplacement: form.direction_deplacement.trim() || null,
-          niveau_certitude:      form.niveau_certitude,
-          statut_validation:     'en_attente',
-          source_signalement:    'application_mobile',
-          id_utilisateur:        user.id,
-          id_dossier:            dossierId ?? null,
+          nom:                       form.nom,
+          prenom:                    form.prenom,
+          age_estime_min:            form.age ? parseInt(form.age) : null,
+          age_estime_max:            form.age ? parseInt(form.age) : null,
+          sexe:                      form.genre,
+          description_physique:      form.description_physique,
+          derniers_vetements_portes: form.vetements,
         })
         .select('id')
         .single();
 
-      if (errSignal) {
-        console.error('Erreur signalement:', errSignal.message);
-        Alert.alert('Erreur', `Impossible de soumettre : ${errSignal.message}`);
-        return;
+      if (errPersonne) { Alert.alert('Erreur', errPersonne.message); return; }
+
+      // 2. Créer le dossier
+      const [jour, mois, annee] = form.date_disparition.split('/');
+      const dateISO = new Date(`${annee}-${mois}-${jour}T${form.heure_disparition}:00`).toISOString();
+
+      const { data: dossier, error: errDossier } = await supabase
+        .from('dossier_disparition')
+        .insert({
+          id_personne:             personne.id,
+          lieu_disparition:        form.lieu_disparition,
+          latitude_disparition:    form.latitude,
+          longitude_disparition:   form.longitude,
+          date_disparition:        dateISO,
+          circonstances:           `${form.description_physique}${form.vetements ? `\nVêtements: ${form.vetements}` : ''}`,
+          type_disparition:        estUrgent ? 'enlevement_presume' : 'inconnue',
+          niveau_urgence:          form.type_urgence,
+          statut_dossier:          'en_cours',
+          id_utilisateur_createur: user.id,
+        })
+        .select('id')
+        .single();
+
+      if (errDossier) { Alert.alert('Erreur', errDossier.message); return; }
+
+      // 3. Créer le signalement
+      const { data: signalement, error: errSignal } = await supabase
+        .from('signalement')
+        .insert({
+          description:           `${form.description_physique}${form.vetements ? '\nVêtements: ' + form.vetements : ''}`,
+          date_observation:      dateISO,
+          lieu_observation:      form.lieu_disparition || null,
+          latitude_observation:  form.latitude,
+          longitude_observation: form.longitude,
+          niveau_certitude:      'probable',
+          statut_validation:     estUrgent ? 'valide' : 'en_attente',
+          source_signalement:    'application_mobile',
+          id_utilisateur:        user.id,
+          id_dossier:            dossier.id,
+        })
+        .select('id')
+        .single();
+
+      if (errSignal) { Alert.alert('Erreur', errSignal.message); return; }
+
+      // 4. Upload photos ── photo_principale mise à jour AVANT l'alerte ──
+      let premierePhotoUrl: string | null = null;
+
+      for (const [idx, photo] of form.photos.entries()) {
+        try {
+          const ext      = photo.name.split('.').pop() ?? 'jpg';
+          // ✅ Utilise personne.id dans le path — toujours disponible
+          const fileName = `personnes/${personne.id}/${Date.now()}_${idx}.${ext}`;
+          const blob     = await (await fetch(photo.uri)).blob();
+
+          const { error: errUp } = await supabase.storage
+            .from('photos')
+            .upload(fileName, blob, { contentType: photo.type, cacheControl: '3600' });
+
+          if (errUp) { console.warn('Upload error:', errUp.message); continue; }
+
+          const { data: urlData } = supabase.storage.from('photos').getPublicUrl(fileName);
+
+          // ✅ URL sauvegardée AVANT l'insert dans photo
+          if (idx === 0) premierePhotoUrl = urlData.publicUrl;
+
+          await supabase.from('photo').insert({
+            url_cloudinary: urlData.publicUrl,
+            id_signalement: signalement.id,
+            id_personne:    personne.id,  // ✅ lié à la personne
+            uploadee_par:   user.id,
+            approuvee:      false,        // le modérateur approuvera
+            visible_public: false,        // sera rendu visible par modérateur
+            type_photo:     'portrait',
+            est_principale: idx === 0,
+          });
+
+        } catch (e) { console.warn('Erreur photo:', e); }
       }
 
-      // Upload photos
-      if (form.photos.length > 0 && signalement?.id) {
-        for (const photo of form.photos) {
-          try {
-            const ext      = photo.name.split('.').pop() ?? 'jpg';
-            const fileName = `signalements/${signalement.id}/${Date.now()}.${ext}`;
-            const response = await fetch(photo.uri);
-            const blob     = await response.blob();
+      // 5. ✅ Mettre à jour photo_principale sur personne
+      // Quand le modérateur créera l'alerte, la photo sera déjà disponible
+      if (premierePhotoUrl) {
+        const { error: errPhotoUpdate } = await supabase
+          .from('personne')
+          .update({ photo_principale: premierePhotoUrl })
+          .eq('id', personne.id);
 
-            const { error: errUpload } = await supabase.storage
-              .from('photos')
-              .upload(fileName, blob, { contentType: photo.type });
-
-            if (errUpload) { console.warn('Upload photo:', errUpload.message); continue; }
-
-            const { data: urlData } = supabase.storage.from('photos').getPublicUrl(fileName);
-
-            await supabase.from('photo').insert({
-              url_cloudinary: urlData.publicUrl,
-              id_signalement: signalement.id,
-              uploadee_par:   user.id,
-              approuvee:      false,
-              visible_public: false,
-              type_photo:     'signalement',
-            });
-          } catch (photoErr) {
-            console.warn('Erreur photo:', photoErr);
-          }
+        if (errPhotoUpdate) {
+          console.warn('⚠️ Erreur update photo_principale:', errPhotoUpdate.message);
+        } else {
+          console.log('✅ photo_principale mise à jour:', premierePhotoUrl);
         }
+      } else {
+        console.warn('⚠️ Aucune photo — photo_principale reste null');
+      }
+
+      // 6. Si urgent → créer l'alerte immédiatement
+      // Si normal → le modérateur créera l'alerte depuis le dashboard
+      if (estUrgent && form.latitude && form.longitude) {
+        const { error: errAlerte } = await supabase
+          .from('alerte')
+          .insert({
+            id_dossier:              dossier.id,
+            titre:                   `Disparition - ${form.prenom} ${form.nom}`,
+            message:                 `Une disparition a été signalée à ${form.lieu_disparition || 'localisation inconnue'}.`,
+            message_court:           `${form.prenom} ${form.nom} - Disparition signalée`,
+            type_alerte:             form.type_urgence === 'critique'
+                                       ? 'amber_alert'
+                                       : 'disparition_adulte_vulnerable',
+            latitude_centre:         form.latitude,
+            longitude_centre:        form.longitude,
+            rayon_km:                100,
+            date_diffusion:          new Date().toISOString(),
+            statut_alerte:           'en_cours',
+            validee:                 true,
+            id_utilisateur_createur: user.id,
+          });
+
+        if (errAlerte) console.warn('Erreur création alerte:', errAlerte.message);
+      }
+
+      // 7. Notifications géolocalisées
+      if (form.latitude && form.longitude) {
+        await envoyerNotifications(
+          dossier.id, user.id,
+          form.latitude, form.longitude,
+          form.prenom, form.nom,
+        );
       }
 
       Alert.alert(
-        'Signalement envoyé ✓',
-        'Votre témoignage a été transmis et sera examiné par notre équipe. Merci pour votre contribution.',
+        estUrgent ? '🚨 Alerte déclenchée' : '✅ Signalement envoyé',
+        estUrgent
+          ? 'L\'alerte a été diffusée aux autorités et aux citoyens à proximité.'
+          : 'Votre signalement a été transmis. Il sera examiné par notre équipe.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
 
     } catch (err: any) {
-      console.error('handleSubmit:', err);
-      Alert.alert('Erreur', `Une erreur est survenue : ${err?.message ?? 'inconnue'}`);
+      console.error('Erreur handleSubmit:', err);
+      Alert.alert('Erreur', err?.message ?? 'Une erreur est survenue');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const isUrgent = TYPES_DISPARITION.find(t => t.key === form.type_urgence)?.alerteImmediate ?? false;
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <Header
-        navigation={navigation}
-        titre={dossierParam
-          ? `Signaler : ${dossierParam.prenom ?? ''} ${dossierParam.nom ?? ''}`
-          : 'Nouveau signalement'}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Bandeau dossier lié */}
-        {dossierParam && (
-          <View style={styles.dossierBadge}>
-            <Ionicons name="folder-outline" size={16} color="#1d4ed8" />
-            <Text style={styles.dossierBadgeTxt}>
-              Signalement lié à :{' '}
-              <Text style={{ fontWeight: '800' }}>
-                {dossierParam.prenom} {dossierParam.nom}
-              </Text>
-            </Text>
-          </View>
-        )}
-
-        {/* ── DESCRIPTION ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="document-text-outline" size={18} color="#1d4ed8" />
-            <Text style={styles.sectionTitle}>Description</Text>
-          </View>
-          <ChampInput
-            label="Description" required
-            placeholder="Décrivez ce que vous avez observé..."
-            value={form.description}
-            onChangeText={(v: string) => set('description', v)}
-            multiline
-          />
-          {errors.description && <Text style={styles.errTxt}>{errors.description}</Text>}
-        </View>
-
-        {/* ── DATE & HEURE ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="calendar-outline" size={18} color="#1d4ed8" />
-            <Text style={styles.sectionTitle}>Date & Heure</Text>
-          </View>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <ChampInput
-                label="Date d'observation" required
-                placeholder="JJ/MM/AAAA"
-                value={form.date_observation}
-                onChangeText={(v: string) => set('date_observation', v)}
-                icon="calendar-outline"
-                keyboardType="numeric"
-              />
-              {errors.date && <Text style={styles.errTxt}>{errors.date}</Text>}
-            </View>
-            <View style={{ width: 12 }} />
-            <View style={{ flex: 1 }}>
-              <ChampInput
-                label="Heure d'observation"
-                placeholder="HH:MM"
-                value={form.heure_observation}
-                onChangeText={(v: string) => set('heure_observation', v)}
-                icon="time-outline"
-                keyboardType="numeric"
-              />
-            </View>
+      {/* NAVBAR */}
+      <View style={styles.navBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.navBtn} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={22} color="#1e3a5f" />
+        </TouchableOpacity>
+        <View style={styles.navCenter}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.eyeOuter}><View style={styles.eyeInner} /></View>
+            <Text style={styles.logoTxt}>Retrouvons<Text style={styles.logoAccent}>Les</Text></Text>
           </View>
         </View>
+        <View style={styles.navBtn} />
+      </View>
 
-        {/* ── LOCALISATION ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="location-outline" size={18} color="#1d4ed8" />
-            <Text style={styles.sectionTitle}>Localisation</Text>
-          </View>
-          <Text style={styles.sectionHint}>
-            Recherchez un lieu, utilisez votre position ou cliquez sur la carte.
-          </Text>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-          <View style={{ marginBottom: 14 }}>
-            <CarteLocalisation
-              latitude={form.latitude}
-              longitude={form.longitude}
-              onPress={(lat, lng) => { set('latitude', lat); set('longitude', lng); }}
-              onGeolocate={handleGeolocate}
-              loading={geoLoading}
-            />
-            {form.latitude && (
-              <Text style={styles.coordsTxt}>
-                📍 {form.latitude.toFixed(5)}, {form.longitude?.toFixed(5)}
-              </Text>
-            )}
-            {errors.localisation && <Text style={styles.errTxt}>{errors.localisation}</Text>}
-          </View>
+        <BandeauUrgence />
+        <Text style={styles.pageTitle}>Signaler une disparition</Text>
+        <Text style={styles.pageSub}>Remplissez ces informations avec le plus de précision possible pour faciliter les recherches.</Text>
 
-          <ChampInput
-            label="Lieu de l'observation"
-            placeholder="Lieu de l'observation (ou laissez vide si vous avez choisi sur la carte)"
-            value={form.lieu_observation}
-            onChangeText={(v: string) => set('lieu_observation', v)}
-            icon="pin-outline"
-          />
-
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <ChampInput
-                label="Ville" placeholder="Yaoundé, Douala..."
-                value={form.ville_observation}
-                onChangeText={(v: string) => set('ville_observation', v)}
-              />
-            </View>
-            <View style={{ width: 12 }} />
-            <View style={{ flex: 1 }}>
-              <ChampInput
-                label="Région" placeholder="Centre, Littoral..."
-                value={form.region_observation}
-                onChangeText={(v: string) => set('region_observation', v)}
-              />
-            </View>
-          </View>
+        {/* TYPE DISPARITION */}
+        <View style={styles.card}>
+          <SelecteurTypeDisparition value={form.type_urgence} onChange={(v) => set('type_urgence', v as any)} />
         </View>
 
-        {/* ── DÉTAILS ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="list-outline" size={18} color="#1d4ed8" />
-            <Text style={styles.sectionTitle}>Détails de l'observation</Text>
-          </View>
-
-          <SelecteurCertitude
-            value={form.niveau_certitude}
-            onChange={(v) => set('niveau_certitude', v)}
-          />
-
-          <ChampInput
-            label="Contexte"
-            placeholder="Contexte de l'observation"
-            value={form.contexte_observation}
-            onChangeText={(v: string) => set('contexte_observation', v)}
-            multiline
-          />
-
-          <ChampInput
-            label="Direction de déplacement"
-            placeholder="Ex : vers le nord, direction marché central..."
-            value={form.direction_deplacement}
-            onChangeText={(v: string) => set('direction_deplacement', v)}
-            icon="navigate-outline"
-          />
-        </View>
-
-        {/* ── PHOTOS ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="camera-outline" size={18} color="#1d4ed8" />
-            <Text style={styles.sectionTitle}>Photos</Text>
-          </View>
+        {/* PHOTOS */}
+        <View style={styles.card}>
+          <SectionHeader icon="camera-outline" label="Photos" />
           <UploadPhotos
             photos={form.photos}
             onAdd={(p) => set('photos', [...form.photos, p])}
@@ -697,79 +620,97 @@ export default function NouveauSignalement({ navigation, route }: any) {
           />
         </View>
 
-        {/* ── BOUTONS ── */}
-        <View style={styles.btnsRow}>
-          <TouchableOpacity
-            style={styles.btnAnnuler}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.btnAnnulerTxt}>Annuler</Text>
-          </TouchableOpacity>
+        {/* IDENTITÉ */}
+        <View style={styles.card}>
+          <SectionHeader icon="person-outline" label="Identité" />
+          <View style={styles.row}>
+            <ChampInput label="Prénom" placeholder="Ex: Jean" value={form.prenom} onChangeText={(v: string) => set('prenom', v)} style={{ flex: 1, marginRight: 8 }} />
+            <ChampInput label="Nom" placeholder="Ex: Dupont" value={form.nom} onChangeText={(v: string) => set('nom', v)} style={{ flex: 1 }} />
+          </View>
+          {(errors.prenom || errors.nom) && <Text style={styles.errTxt}>{errors.prenom || errors.nom}</Text>}
+          <View style={styles.row}>
+            <ChampInput label="Âge" placeholder="Âge estimé" value={form.age} onChangeText={(v: string) => set('age', v)} keyboardType="numeric" style={{ flex: 1, marginRight: 8 }} />
+            <SelecteurGenre value={form.genre} onChange={(v) => set('genre', v)} />
+          </View>
+        </View>
 
-          <TouchableOpacity
-            style={[styles.btnSoumettre, submitting && { opacity: 0.7 }]}
-            onPress={handleSubmit}
-            disabled={submitting}
-            activeOpacity={0.85}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="send-outline" size={16} color="#fff" />
-                <Text style={styles.btnSoumettreText}>Soumettre</Text>
-              </>
-            )}
+        {/* DERNIÈRE APPARITION */}
+        <View style={styles.card}>
+          <SectionHeader icon="location-outline" label="Dernière Apparition" />
+          <ChampInput label="Lieu précis" placeholder="Ville, quartier, rue..." value={form.lieu_disparition} onChangeText={(v: string) => set('lieu_disparition', v)} icon="map-outline" />
+
+          <Text style={inS.label}>Date et heure</Text>
+          <View style={[styles.row, { marginBottom: 10, gap: 8 }]}>
+            <View style={[inS.box, { flex: 1 }]}>
+              <Ionicons name="calendar-outline" size={14} color="#94a3b8" style={{ marginRight: 8 }} />
+              <TextInput style={inS.input} placeholder="JJ/MM/AAAA" value={form.date_disparition} onChangeText={(v) => set('date_disparition', v)} />
+            </View>
+            <View style={[inS.box, { flex: 1 }]}>
+              <Ionicons name="time-outline" size={14} color="#94a3b8" style={{ marginRight: 8 }} />
+              <TextInput style={inS.input} placeholder="HH:MM" value={form.heure_disparition} onChangeText={(v) => set('heure_disparition', v)} />
+            </View>
+          </View>
+
+          <CarteLocalisation
+            latitude={form.latitude} longitude={form.longitude}
+            onPress={(lat, lng) => { set('latitude', lat); set('longitude', lng); }}
+            onGeolocate={handleGeolocate} loading={geoLoading}
+          />
+          {errors.localisation && <Text style={styles.errTxt}>{errors.localisation}</Text>}
+
+          <TouchableOpacity style={styles.geoButton} onPress={handleGeolocate} activeOpacity={0.8}>
+            <Ionicons name="locate-outline" size={18} color="#1d4ed8" />
+            <Text style={styles.geoButtonText}>Utiliser ma position actuelle</Text>
+            {geoLoading && <ActivityIndicator size="small" color="#1d4ed8" />}
           </TouchableOpacity>
         </View>
+
+        {/* DESCRIPTION PHYSIQUE */}
+        <View style={styles.card}>
+          <SectionHeader icon="eye-outline" label="Description Physique" />
+          <ChampInput placeholder="Taille, couleur des yeux, cheveux, signes particuliers (tatouages, cicatrices)..." value={form.description_physique} onChangeText={(v: string) => set('description_physique', v)} multiline />
+        </View>
+
+        {/* VÊTEMENTS */}
+        <View style={styles.card}>
+          <SectionHeader icon="shirt-outline" label="Vêtements Portés" />
+          <ChampInput placeholder="Haut, pantalon, chaussures, sac, accessoires au moment de la disparition..." value={form.vetements} onChangeText={(v: string) => set('vetements', v)} multiline />
+        </View>
+
+        {/* BOUTON */}
+        <TouchableOpacity
+          style={[styles.btnPublier, isUrgent && styles.btnUrgent, submitting && { opacity: 0.7 }]}
+          onPress={handleSubmit} disabled={submitting} activeOpacity={0.85}
+        >
+          {submitting
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Text style={styles.btnPublierTxt}>{isUrgent ? "DÉCLENCHER L'ALERTE" : 'PUBLIER LE SIGNALEMENT'}</Text>
+          }
+        </TouchableOpacity>
 
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── STYLES ───
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  content:   { padding: 16, paddingBottom: 60 },
-
-  dossierBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#eff6ff', borderRadius: 10,
-    padding: 12, marginBottom: 20,
-    borderWidth: 1, borderColor: '#bfdbfe',
-  },
-  dossierBadgeTxt: { fontSize: 13, color: '#1d4ed8', flex: 1 },
-
-  section: {
-    backgroundColor: '#fff', borderRadius: 16,
-    padding: 16, marginBottom: 16,
-    borderWidth: 1, borderColor: '#e2e8f0',
-    elevation: 1, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3,
-  },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  sectionTitle:  { fontSize: 14, fontWeight: '800', color: '#1e3a5f' },
-  sectionHint:   { fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 17 },
-
-  row:       { flexDirection: 'row' },
-  coordsTxt: { fontSize: 11, color: '#1d4ed8', marginTop: 6, fontWeight: '600' },
-  errTxt:    { fontSize: 11, color: '#ef4444', marginTop: -12, marginBottom: 8 },
-
-  btnsRow: { flexDirection: 'row', gap: 12, marginTop: 8, paddingBottom: 20 },
-  btnAnnuler: {
-    flex: 1, paddingVertical: 14, borderRadius: 12,
-    backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#e2e8f0',
-  },
-  btnAnnulerTxt: { fontSize: 14, fontWeight: '700', color: '#64748b' },
-  btnSoumettre: {
-    flex: 2, paddingVertical: 14, borderRadius: 12,
-    backgroundColor: '#1d4ed8',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    elevation: 3, shadowColor: '#1d4ed8',
-    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 6,
-  },
-  btnSoumettreText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  container:     { flex: 1, backgroundColor: '#f8fafc' },
+  content:       { padding: 16, paddingBottom: 40 },
+  navBar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f8fafc', paddingHorizontal: 16, paddingVertical: 10, paddingTop: Platform.OS === 'android' ? 40 : 10, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  navBtn:        { width: 36, height: 36, justifyContent: 'center' },
+  navCenter:     { flex: 1, alignItems: 'center' },
+  eyeOuter:      { width: 20, height: 12, borderRadius: 10, borderWidth: 2, borderColor: '#0b1c30', justifyContent: 'center', alignItems: 'center' },
+  eyeInner:      { width: 5, height: 5, borderRadius: 3, backgroundColor: '#0b1c30' },
+  logoTxt:       { fontSize: 16, fontWeight: '800', color: '#0b1c30', letterSpacing: -0.3 },
+  logoAccent:    { color: '#b45f06' },
+  pageTitle:     { fontSize: 18, fontWeight: '700', color: '#0b1c30', marginBottom: 4 },
+  pageSub:       { fontSize: 13, color: '#45464d', lineHeight: 19, marginBottom: 16 },
+  card:          { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3 },
+  row:           { flexDirection: 'row', alignItems: 'flex-start' },
+  errTxt:        { fontSize: 11, color: '#ef4444', marginTop: -6, marginBottom: 8 },
+  btnPublier:    { backgroundColor: '#0b1c30', borderRadius: 12, paddingVertical: 16, marginTop: 4, alignItems: 'center', justifyContent: 'center', elevation: 3 },
+  btnUrgent:     { backgroundColor: '#dc2626' },
+  btnPublierTxt: { fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: 0.6 },
+  geoButton:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, marginTop: 8, backgroundColor: '#eff6ff', borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' },
+  geoButtonText: { fontSize: 13, color: '#1d4ed8', fontWeight: '500' },
 });

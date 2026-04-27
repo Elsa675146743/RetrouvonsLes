@@ -1,172 +1,288 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, SafeAreaView,
   TouchableOpacity, StatusBar, ActivityIndicator,
-  RefreshControl, Dimensions, Platform,
+  RefreshControl, Dimensions, Image, Modal, Share,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { supabase }                    from '../../services/supabase';
+import { supabase } from '../../services/supabase';
 
 const { width } = Dimensions.get('window');
 
+type Alerte = {
+  id: string;
+  id_dossier: string;
+  titre: string;
+  message_court: string;
+  statut_alerte: string;
+  date_diffusion: string;
+  rayon_km: number;
+  personne_nom: string;
+  personne_prenom: string;
+  personne_age_estime_min: number;
+  personne_age_estime_max: number;
+  personne_taille_cm: number | null;
+  personne_poids_kg: number | null;
+  personne_photo_principale: string | null;
+  lieu_disparition: string;
+  niveau_urgence: string | null;
+};
 
+// ─────────────────────────────────────────────────────────────
+// MENU PLUS
+// ─────────────────────────────────────────────────────────────
+function MenuPlus({ visible, onClose, navigation }: any) {
+  const items = [
+    { icon: 'add-circle-outline', label: 'Nouveau signalement', screen: 'NouveauSignalement', color: '#000000' },
+    { icon: 'heart-outline', label: 'Dons & Campagnes', screen: 'Dons', color: '#b45f06' },
+    { icon: 'person-outline', label: 'Profil disparition', screen: 'ProfilDisparition', color: '#000000' },
+  ];
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={menuStyles.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={menuStyles.container}>
+          <View style={menuStyles.handle} />
+          <Text style={menuStyles.title}>Actions rapides</Text>
+          {items.map((item, i) => (
+            <TouchableOpacity
+              key={i}
+              style={menuStyles.item}
+              onPress={() => {
+                onClose();
+                setTimeout(() => navigation.navigate(item.screen), 200);
+              }}
+            >
+              <View style={[menuStyles.itemIconBox, { backgroundColor: item.color + '20' }]}>
+                <Ionicons name={item.icon as any} size={22} color={item.color} />
+              </View>
+              <Text style={menuStyles.itemLabel}>{item.label}</Text>
+              <Ionicons name="chevron-forward-outline" size={18} color="#76777d" />
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={menuStyles.btnFermer} onPress={onClose}>
+            <Text style={menuStyles.btnFermerText}>Fermer</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const menuStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  container: { backgroundColor: '#ffffff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  handle: { width: 40, height: 4, backgroundColor: '#c6c6cd', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  title: { fontSize: 14, fontWeight: '600', color: '#45464d', marginBottom: 16, letterSpacing: 0.5, textTransform: 'uppercase' },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#c6c6cd' },
+  itemIconBox: { width: 44, height: 44, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  itemLabel: { flex: 1, fontSize: 16, fontWeight: '500', color: '#0b1c30' },
+  btnFermer: { backgroundColor: '#e5eeff', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  btnFermerText: { color: '#000000', fontWeight: '600', fontSize: 14 },
+});
 
 // ─────────────────────────────────────────────────────────────
 // HEADER
 // ─────────────────────────────────────────────────────────────
-function AppHeader({ navigation, alertes = 0, initiales = '?', verifie = false }: any) {
+function AppHeader({ alertesCount = 0, initiales = '?', verifie = false, onProfilePress }: any) {
+  const navigation = useNavigation<any>();
+
   return (
     <View style={hS.wrapper}>
       <View style={hS.row}>
-
-        {/* ── GAUCHE : Avatar ── */}
-       <TouchableOpacity
-          style={hS.avatar} // On utilise le style hS.avatar qui est déjà rond et bleu
-          onPress={() => navigation.navigate('ProfilUtilisateur')}
-        >
-          <Text style={hS.avatarText}>{initiales}</Text>
-          
-          {/* Petit point vert si le compte est vérifié */}
-          {verifie && (
-            <View style={hS.verifiedDot} />
-          )}
+        <TouchableOpacity style={hS.profileBtn} onPress={onProfilePress}>
+          <View style={hS.avatar}>
+            <Text style={hS.avatarText}>{initiales}</Text>
+            {verifie && <View style={hS.verifiedDot} />}
+          </View>
         </TouchableOpacity>
 
-        {/* ── CENTRE : Logo ── */}
-        <View style={hS.center}>
+        <View style={hS.logoContainer}>
           <View style={hS.logoRow}>
             <View style={hS.eyeOuter}>
               <View style={hS.eyeInner} />
             </View>
-            <Text style={hS.appName}>
-              Retrouvons<Text style={hS.appNameAccent}>Les</Text>
+            <Text style={hS.logoText}>
+              Retrouvons<Text style={hS.logoAccent}>Les</Text>
             </Text>
           </View>
-          <Text style={hS.tagline}>Ensemble, retrouvons les </Text>
+          <Text style={hS.tagline}>Ensemble, retrouvons-les</Text>
         </View>
 
-        {/* ── DROITE : Cloche ── */}
-              <TouchableOpacity
-          style={hS.bellBtn}
-          onPress={() => navigation.navigate('Alertes')} // Redirige vers la liste des notifications
-        >
-          <View style={hS.bellWrap}>
-            <Ionicons name="notifications-outline" size={24} color="#1e3a5f" />
-            {alertes > 0 && (
-              <View style={hS.badge}>
-                <Text style={hS.badgeText}>{alertes > 9 ? '9+' : alertes}</Text>
-              </View>
-            )}
-          </View>
+        <TouchableOpacity style={hS.bellBtn} onPress={() => navigation.navigate('Alertes')}>
+          <Ionicons name="notifications-outline" size={24} color="#1e3a5f" />
+          {alertesCount > 0 && (
+            <View style={hS.badge}>
+              <Text style={hS.badgeText}>{alertesCount > 9 ? '9+' : alertesCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
-
       </View>
       <View style={hS.separator} />
     </View>
   );
 }
+
 const hS = StyleSheet.create({
-  wrapper: {
-    backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'android' ? 40 : 0,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  // Avatar
-  avatarBtn: { width: 44, height: 44, position: 'relative' },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#1d4ed8',
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: '#93c5fd',
-    elevation: 2, shadowColor: '#1d4ed8',
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4,
-  },
-  avatarText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.5 },
-  verifiedDot: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: '#16a34a',
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1.5, borderColor: '#fff',
-  },
-  // Centre
-  center: { alignItems: 'center', flex: 1 },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  eyeOuter: {
-    width: 26, height: 16, borderRadius: 13,
-    borderWidth: 2, borderColor: '#1d4ed8',
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#eff6ff',
-  },
-  eyeInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#1d4ed8' },
-  appName: { fontSize: 18, fontWeight: '800', color: '#1e3a5f', letterSpacing: -0.3 },
-  appNameAccent: { color: '#1d4ed8' },
-  tagline: {
-    fontSize: 9, color: '#94a3b8',
-    letterSpacing: 1, textTransform: 'uppercase',
-    fontWeight: '500', marginTop: 3,
-  },
-  // Cloche
-  bellBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  bellWrap: { position: 'relative' },
-  badge: {
-    position: 'absolute', top: -6, right: -6,
-    minWidth: 17, height: 17, borderRadius: 9,
-    backgroundColor: '#ef4444',
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 3,
-    borderWidth: 1.5, borderColor: '#fff',
-  },
-  badgeText: { fontSize: 9, color: '#fff', fontWeight: '800' },
-  separator: { height: 1, backgroundColor: '#e2e8f0' },
+  wrapper: { backgroundColor: '#f8f9ff', paddingTop: 12, paddingBottom: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
+  profileBtn: { width: 44, height: 44 },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  avatarText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  verifiedDot: { position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: '#16a34a', borderWidth: 2, borderColor: '#f8f9ff' },
+  logoContainer: { alignItems: 'center', flex: 1 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  eyeOuter: { width: 24, height: 14, borderRadius: 12, borderWidth: 2, borderColor: '#000000', justifyContent: 'center', alignItems: 'center' },
+  eyeInner: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#000000' },
+  logoText: { fontSize: 18, fontWeight: '800', color: '#0b1c30', letterSpacing: -0.3 },
+  logoAccent: { color: '#b45f06' },
+  tagline: { fontSize: 9, color: '#76777d', letterSpacing: 0.5, marginTop: 2 },
+  bellBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  badge: { position: 'absolute', top: 4, right: 4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#ba1a1a', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#f8f9ff' },
+  badgeText: { fontSize: 9, color: '#ffffff', fontWeight: '700' },
+  separator: { height: 1, backgroundColor: '#c6c6cd', marginTop: 8 },
 });
 
 // ─────────────────────────────────────────────────────────────
-// STAT CARD
+// CARTE ALERTE
 // ─────────────────────────────────────────────────────────────
-function StatCard({ icon, count, label, sub, loading, color = '#1d4ed8' }: any) {
+function AlerteCard({ alerte, onPress, onReportSeen }: { alerte: Alerte; onPress: () => void; onReportSeen: () => void }) {
+
+  const handleShare = async () => {
+    try {
+      const ageMoyen = alerte.personne_age_estime_min && alerte.personne_age_estime_max
+        ? Math.floor((alerte.personne_age_estime_min + alerte.personne_age_estime_max) / 2)
+        : alerte.personne_age_estime_min || alerte.personne_age_estime_max || 0;
+
+      await Share.share({
+        title: `Disparition - ${alerte.personne_prenom} ${alerte.personne_nom}`,
+        message:
+          `🔍 ALERTE DISPARITION\n\n` +
+          `Nom: ${alerte.personne_prenom} ${alerte.personne_nom}\n` +
+          `Âge: ${ageMoyen > 0 ? ageMoyen : 'Inconnu'} ans\n` +
+          `Lieu: ${alerte.lieu_disparition}\n` +
+          `Date: ${new Date(alerte.date_diffusion).toLocaleDateString('fr-FR')}\n\n` +
+          `📢 Partager pour aider à retrouver cette personne !\nVia l'application RetrouvonsLes`,
+      });
+    } catch (error) {
+      console.error('Erreur partage:', error);
+    }
+  };
+
+  const diffHeures = Math.floor((Date.now() - new Date(alerte.date_diffusion).getTime()) / (1000 * 3600));
+  const dureeText = diffHeures < 24
+    ? `Disparu depuis ${diffHeures} heures`
+    : `Disparu depuis ${Math.floor(diffHeures / 24)} jours`;
+
+  const ageMoyen = alerte.personne_age_estime_min && alerte.personne_age_estime_max
+    ? Math.floor((alerte.personne_age_estime_min + alerte.personne_age_estime_max) / 2)
+    : alerte.personne_age_estime_min || alerte.personne_age_estime_max || 0;
+
+  const ageText = ageMoyen > 0 ? `${ageMoyen} ans` : 'Âge inconnu';
+  const taillePoids = [
+    alerte.personne_taille_cm ? `${alerte.personne_taille_cm} cm` : null,
+    alerte.personne_poids_kg ? `${alerte.personne_poids_kg} kg` : null,
+  ].filter(Boolean);
+  const detailsText = taillePoids.length > 0 ? `${ageText} · ${taillePoids.join(' · ')}` : ageText;
+
   return (
-    <View style={sCard.card}>
-      <View style={[sCard.iconBox, { backgroundColor: color + '18' }]}>
-        <Ionicons name={icon} size={18} color={color} />
+    <View style={cardStyles.card}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
+        <View style={cardStyles.photoContainer}>
+          {alerte.personne_photo_principale ? (
+            <Image 
+              source={{ uri: alerte.personne_photo_principale }} 
+              style={cardStyles.photo} 
+              resizeMode="cover"
+              onError={(e) => console.log('Erreur chargement image:', e.nativeEvent.error)}
+            />
+          ) : (
+            <View style={cardStyles.photoPlaceholder}>
+              <Ionicons name="person-outline" size={50} color="#76777d" />
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        <View style={cardStyles.infoContainer}>
+          <Text style={cardStyles.name}>{alerte.personne_prenom} {alerte.personne_nom}</Text>
+          <Text style={cardStyles.details}>{detailsText}</Text>
+          <View style={cardStyles.locationRow}>
+            <Ionicons name="location-outline" size={14} color="#76777d" />
+            <Text style={cardStyles.location}>{alerte.lieu_disparition || 'Lieu inconnu'}</Text>
+          </View>
+          <Text style={cardStyles.duration}>{dureeText}</Text>
+        </View>
+      </TouchableOpacity>
+
+      <View style={cardStyles.buttonRow}>
+        <TouchableOpacity style={cardStyles.reportBtn} onPress={onReportSeen}>
+          <Text style={cardStyles.reportBtnText}>SIGNALER VU</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={cardStyles.shareBtn} onPress={handleShare}>
+          <Ionicons name="share-outline" size={16} color="#3b82f6" />
+          <Text style={cardStyles.shareBtnText}>PARTAGER</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={[sCard.count, { color }]}>{loading ? '—' : count}</Text>
-      <Text style={sCard.label}>{label}</Text>
-      {sub && <Text style={[sCard.sub, { color }]}>{sub}</Text>}
     </View>
   );
 }
 
-const sCard = StyleSheet.create({
-  card: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    width: (width - 52) / 3,
-    borderWidth: 1, borderColor: '#e2e8f0',
-    alignItems: 'flex-start', gap: 4,
-    elevation: 1, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 3,
-  },
-  iconBox: {
-    width: 34, height: 34, borderRadius: 8,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 2,
-  },
-  count: { fontSize: 20, fontWeight: '800' },
-  label: { fontSize: 10, color: '#64748b', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
-  sub:   { fontSize: 10, fontWeight: '600' },
+const cardStyles = StyleSheet.create({
+  card: { backgroundColor: '#ffffff', borderRadius: 12, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#c6c6cd' },
+  photoContainer: { position: 'relative', height: 200, backgroundColor: '#d3e4fe' },
+  photo: { width: '100%', height: '100%' },
+  photoPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#e5eeff' },
+  infoContainer: { padding: 16 },
+  name: { fontSize: 20, fontWeight: '700', color: '#0b1c30', marginBottom: 4 },
+  details: { fontSize: 14, color: '#45464d', marginBottom: 12 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  location: { fontSize: 13, color: '#45464d' },
+  duration: { fontSize: 12, color: '#76777d', marginBottom: 16 },
+  buttonRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  reportBtn: { flex: 1, backgroundColor: '#1e3a5f', paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
+  reportBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
+  shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
+  shareBtnText: { color: '#3b82f6', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
+});
+
+// ─────────────────────────────────────────────────────────────
+// STATS
+// ─────────────────────────────────────────────────────────────
+function StatsSection({ stats, loading }: { stats: any; loading: boolean }) {
+  return (
+    <View style={statsStyles.container}>
+      <Text style={statsStyles.title}>Communauté Vigilance</Text>
+      <View style={statsStyles.grid}>
+        <View style={statsStyles.card}>
+          <Text style={statsStyles.number}>{loading ? '—' : stats.totalAlertes}</Text>
+          <Text style={statsStyles.label}>Alertes</Text>
+        </View>
+        <View style={statsStyles.card}>
+          <Text style={statsStyles.number}>{loading ? '—' : stats.alertesActives}</Text>
+          <Text style={statsStyles.label}>En cours</Text>
+        </View>
+        <View style={statsStyles.card}>
+          <Text style={statsStyles.number}>{loading ? '—' : stats.dossiersResolus}</Text>
+          <Text style={statsStyles.label}>Résolus</Text>
+        </View>
+      </View>
+      <Text style={statsStyles.footer}>Ensemble, mobilisons-nous pour les retrouver</Text>
+    </View>
+  );
+}
+
+const statsStyles = StyleSheet.create({
+  container: { backgroundColor: '#ffffff', borderRadius: 12, padding: 20, marginTop: 24, marginBottom: 30, borderWidth: 1, borderColor: '#c6c6cd' },
+  title: { fontSize: 14, fontWeight: '600', color: '#000000', textAlign: 'center', marginBottom: 16, letterSpacing: 0.5, textTransform: 'uppercase' },
+  grid: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 },
+  card: { alignItems: 'center' },
+  number: { fontSize: 28, fontWeight: '800', color: '#0b1c30' },
+  label: { fontSize: 12, color: '#76777d', marginTop: 4 },
+  footer: { fontSize: 11, color: '#45464d', textAlign: 'center', fontStyle: 'italic' },
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -174,182 +290,157 @@ const sCard = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────
 export default function Home({ navigation: navProp }: any) {
   const navigation = useNavigation<StackNavigationProp<any>>();
-
-  const [loading, setLoading]           = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [initiales, setInitiales]       = useState('?');
-  const [verifie, setVerifie]           = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [alertes, setAlertes] = useState<Alerte[]>([]);
   const [alertesCount, setAlertesCount] = useState(0);
-  const [stats, setStats] = useState({
-    total: 0, approuves: 0, enRevision: 0,
-    alertesActives: 0, score: 0, nonLues: 0,
-  });
-  const [activites, setActivites] = useState<any[]>([]);
-  
+  const [initiales, setInitiales] = useState('?');
+  const [verifie, setVerifie] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [stats, setStats] = useState({ totalAlertes: 0, alertesActives: 0, dossiersResolus: 0 });
 
-  // Calcul initiales depuis prénom + nom
   const getInitiales = (prenom: string, nom: string): string => {
     const p = (prenom?.trim() || '')[0]?.toUpperCase() || '';
     const n = (nom?.trim() || '')[0]?.toUpperCase() || '';
     return (p + n) || '?';
   };
 
+  const handleReportSeen = (alerte: Alerte) => {
+    navigation.navigate('NouveauSignalement', {
+      dossierId: alerte.id_dossier,
+    });
+  };
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
 
-      // 1. Session utilisateur
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
-        console.warn('Pas de session:', authError?.message);
         setLoading(false);
         return;
       }
 
-      // 2. Profil depuis la table utilisateur
-      const { data: u, error: profilError } = await supabase
+      // Profil utilisateur
+      const { data: u, error: profileError } = await supabase
         .from('utilisateur')
-        .select('nom, prenom, statut_compte, score_fiabilite')
+        .select('nom, prenom, statut_compte')
         .eq('id', user.id)
         .single();
 
-      if (profilError) {
-        console.warn('Erreur profil:', profilError.message);
+      if (profileError) {
+        console.error('Erreur profil:', profileError);
       } else if (u) {
         setInitiales(getInitiales(u.prenom, u.nom));
         setVerifie(u.statut_compte === 'actif');
       }
 
-      // 3. Toutes les stats en parallèle
-      const [
-        resTotal,
-        resApprouves,
-        resEnRevision,
-        resAlertes,
-        resNonLues,
-      ] = await Promise.all([
+      // Récupérer les alertes avec les infos personne et dossier
+      const { data: alertesData, error: alertesError } = await supabase
+        .from('alerte')
+        .select(`
+          id,
+          titre,
+          message_court,
+          statut_alerte,
+          date_diffusion,
+          rayon_km,
+          id_dossier,
+          dossier_disparition (
+            id,
+            lieu_disparition,
+            personne (
+              nom,
+              prenom,
+              age_estime_min,
+              age_estime_max,
+              taille_cm,
+              poids_kg,
+              photo_principale
+            )
+          )
+        `)
+        .eq('statut_alerte', 'en_cours')
+        .eq('validee', true)
+        .order('date_diffusion', { ascending: false });
 
-        // Tous mes signalements
-        supabase
-          .from('signalement')
-          .select('*', { count: 'exact', head: true })
-          .eq('id_utilisateur', user.id),
+      if (alertesError) {
+        console.error('Erreur alertes:', alertesError.message);
+      } else if (alertesData && alertesData.length > 0) {
+        const formatted: Alerte[] = alertesData.map((item: any) => {
+          const dossier = item.dossier_disparition;
+          const personne = dossier?.personne || {};
+          return {
+            id: item.id,
+            id_dossier: dossier?.id || item.id_dossier,
+            titre: item.titre || '',
+            message_court: item.message_court || '',
+            statut_alerte: item.statut_alerte,
+            date_diffusion: item.date_diffusion,
+            rayon_km: item.rayon_km || 50,
+            personne_nom: personne.nom || 'Inconnu',
+            personne_prenom: personne.prenom || 'Inconnu',
+            personne_age_estime_min: personne.age_estime_min || 0,
+            personne_age_estime_max: personne.age_estime_max || 0,
+            personne_taille_cm: personne.taille_cm || null,
+            personne_poids_kg: personne.poids_kg || null,
+            personne_photo_principale: personne.photo_principale || null,
+            lieu_disparition: dossier?.lieu_disparition || 'Lieu inconnu',
+            niveau_urgence: null,
+          };
+        });
+        setAlertes(formatted);
+      } else {
+        setAlertes([]);
+      }
 
-        // Mes signalements validés
-        supabase
-          .from('signalement')
-          .select('*', { count: 'exact', head: true })
-          .eq('id_utilisateur', user.id)
-          .eq('statut_validation', 'valide'),
+      // Nombre de notifications non lues
+      const { count: notifCount, error: notifError } = await supabase
+        .from('notification')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_utilisateur', user.id)
+        .eq('lue', false);
 
-        // Mes signalements en vérification
-        supabase
-          .from('signalement')
-          .select('*', { count: 'exact', head: true })
-          .eq('id_utilisateur', user.id)
-          .eq('statut_validation', 'en_verification'),
+      if (notifError) {
+        console.error('Erreur notifications:', notifError);
+      } else {
+        setAlertesCount(notifCount || 0);
+      }
 
-        // Alertes actives globales (toutes, pas seulement les miennes)
-        supabase
-          .from('alerte')
-          .select('*', { count: 'exact', head: true })
-          .eq('statut_alerte', 'en_cours'),
+      // Statistiques
+      const { count: totalAlertes } = await supabase.from('alerte').select('*', { count: 'exact', head: true });
+      const { count: alertesActives } = await supabase.from('alerte').select('*', { count: 'exact', head: true }).eq('statut_alerte', 'en_cours');
+      const { count: dossiersResolus } = await supabase.from('dossier_disparition').select('*', { count: 'exact', head: true }).in('statut_dossier', ['retrouve_vivant', 'retrouve_decede']);
 
-        // Mes notifications non lues (filtrées par user)
-        supabase
-          .from('notification')
-          .select('*', { count: 'exact', head: true })
-          .eq('id_utilisateur', user.id)
-          .eq('lue', false),
-      ]);
-
-      // Logs d'erreur individuels pour débogage
-      if (resTotal.error)      console.warn('signalements total:', resTotal.error.message);
-      if (resApprouves.error)  console.warn('signalements approuves:', resApprouves.error.message);
-      if (resEnRevision.error) console.warn('signalements revision:', resEnRevision.error.message);
-      if (resAlertes.error)    console.warn('alertes actives:', resAlertes.error.message);
-      if (resNonLues.error)    console.warn('notifications nonLues:', resNonLues.error.message);
-
-      const nonLues = resNonLues.count ?? 0;
-      setAlertesCount(nonLues);
       setStats({
-        total:          resTotal.count      ?? 0,
-        approuves:      resApprouves.count  ?? 0,
-        enRevision:     resEnRevision.count ?? 0,
-        alertesActives: resAlertes.count    ?? 0,
-        score:          u?.score_fiabilite  ?? 0,
-        nonLues,
+        totalAlertes: totalAlertes || 0,
+        alertesActives: alertesActives || 0,
+        dossiersResolus: dossiersResolus || 0,
       });
 
-      // 4. Activité récente
-      const { data: acts, error: actsError } = await supabase
-        .from('journal_activite')
-        .select('id, type_action, action_detaillee, description, date_action')
-        .eq('id_utilisateur', user.id)
-        .order('date_action', { ascending: false })
-        .limit(5);
-
-      if (actsError) console.warn('activites:', actsError.message);
-      setActivites(acts ?? []);
-
     } catch (err) {
-      console.error('Erreur Home fetchData:', err);
+      console.error('Erreur Home:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const quickActions = [
-    {
-      icon: 'add-circle', label: 'Nouveau signalement',
-      sub: 'Déclarer une disparition', screen: 'NouveauSignalement',
-      bg: '#1d4ed8', textColor: '#fff', accent: '#fff',
-    },
-    {
-      icon: 'eye-outline', label: 'Mes signalements',
-      sub: 'Suivre mes déclarations', screen: 'Signalements',
-      bg: '#fff', textColor: '#1e3a5f', accent: '#1d4ed8',
-    },
-    {
-      icon: 'notifications-outline', label: 'Notifications',
-      sub: `${stats.nonLues} non lue${stats.nonLues > 1 ? 's' : ''}`,
-      screen: 'Alertes',
-      bg: '#fff', textColor: '#1e3a5f', accent: '#1d4ed8',
-    },
-    {
-      icon: 'map-outline', label: 'Carte des alertes',
-      sub: 'Voir à proximité', screen: 'Carte',
-      bg: '#fff', textColor: '#1e3a5f', accent: '#1d4ed8',
-    },
-  ];
-
-  const bonnesPratiques = [
-    {
-      titre: 'Décrivez précisément ce que vous avez observé',
-      desc: "Indiquez le lieu exact, l'heure approximative, la direction de déplacement et tout détail distinctif.",
-    },
-    {
-      titre: 'Protégez votre sécurité',
-      desc: "Ne tentez pas d'interpeller seul une personne suspecte. Contactez les autorités compétentes.",
-    },
-    {
-      titre: 'Respectez la vie privée',
-      desc: "Utilisez l'application pour transmettre vos signalements de façon sécurisée. Évitez les réseaux sociaux.",
-    },
-  ];
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar barStyle="dark-content" backgroundColor="#f8f9ff" />
 
       <AppHeader
-        navigation={navigation}
-        alertes={alertesCount}
+        alertesCount={alertesCount}
         initiales={initiales}
         verifie={verifie}
+        onProfilePress={() => navigation.navigate('ProfilUtilisateur')}
       />
 
       <ScrollView
@@ -359,217 +450,67 @@ export default function Home({ navigation: navProp }: any) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); fetchData(); }}
-            colors={['#1d4ed8']}
-            tintColor="#1d4ed8"
+            colors={['#b45f06']}
+            tintColor="#b45f06"
           />
         }
       >
-        {/* STATS */}
-        <Text style={styles.sectionLabel}>Tableau de bord</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-          <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
-            <StatCard
-              loading={loading} icon="document-text-outline"
-              count={stats.total} label="Signalements" sub="Total"
-              color="#1d4ed8"
-            />
-            <StatCard
-              loading={loading} icon="checkmark-circle-outline"
-              count={stats.approuves} label="Approuvés" sub="Validés"
-              color="#16a34a"
-            />
-            <StatCard
-              loading={loading} icon="time-outline"
-              count={stats.enRevision} label="En révision" sub="En cours"
-              color="#d97706"
-            />
-            <StatCard
-              loading={loading} icon="warning-outline"
-              count={stats.alertesActives} label="Alertes" sub="Actives"
-              color="#ef4444"
-            />
-            <StatCard
-              loading={loading} icon="star-outline"
-              count={`${stats.score}%`} label="Fiabilité" sub="Mon score"
-              color="#7c3aed"
-            />
+        <View style={styles.headerSection}>
+          <Text style={styles.mainTitle}>Alertes actives</Text>
+          <Text style={styles.subTitle}>
+            {alertes.length} alerte{alertes.length > 1 ? 's' : ''} en cours
+          </Text>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator size="large" color="#b45f06" style={{ paddingVertical: 40 }} />
+        ) : alertes.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="people-outline" size={48} color="#c6c6cd" />
+            <Text style={styles.emptyText}>Aucune alerte active</Text>
           </View>
-        </ScrollView>
+        ) : (
+          alertes.map((alerte) => (
+            <AlerteCard
+              key={alerte.id}
+              alerte={alerte}
+              onPress={() => navigation.navigate('ProfilDisparition', { id: alerte.id_dossier })}
+              onReportSeen={() => handleReportSeen(alerte)}
+            />
+          ))
+        )}
 
-        {/* ACTIONS RAPIDES */}
-        <Text style={styles.sectionLabel}>Actions rapides</Text>
-        <View style={styles.actionsGrid}>
-          {quickActions.map((a, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[
-                styles.actionCard,
-                { backgroundColor: a.bg, borderColor: a.bg === '#fff' ? '#e2e8f0' : a.bg },
-              ]}
-              onPress={() => navigation.navigate(a.screen)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name={a.icon as any} size={28} color={a.accent} />
-              <Text style={[styles.actionLabel, { color: a.textColor }]}>{a.label}</Text>
-              <Text style={[
-                styles.actionSub,
-                { color: a.bg === '#1d4ed8' ? 'rgba(255,255,255,0.75)' : '#1d4ed8' },
-              ]}>
-                {a.sub}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* ACTIVITÉ RÉCENTE */}
-        <Text style={styles.sectionLabel}>Activité récente</Text>
-        <View style={styles.sectionCard}>
-          {loading ? (
-            <ActivityIndicator size="small" color="#1d4ed8" style={{ paddingVertical: 20 }} />
-          ) : activites.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="time-outline" size={32} color="#cbd5e1" />
-              <Text style={styles.emptyText}>Aucune activité récente</Text>
-            </View>
-          ) : (
-            activites.map((a, i) => (
-              <View
-                key={a.id ?? i}
-                style={[
-                  styles.activiteItem,
-                  i === activites.length - 1 && { borderBottomWidth: 0 },
-                ]}
-              >
-                <View style={styles.activiteIconBox}>
-                  <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.activiteTitre}>
-                    {a.action_detaillee || a.type_action?.replace(/_/g, ' ') || '—'}
-                  </Text>
-                  {a.description ? (
-                    <Text style={styles.activiteDesc} numberOfLines={2}>{a.description}</Text>
-                  ) : null}
-                  <Text style={styles.activiteDate}>
-                    {a.date_action
-                      ? new Date(a.date_action).toLocaleDateString('fr-FR', {
-                          day: '2-digit', month: 'short', year: 'numeric',
-                        })
-                      : '—'}
-                  </Text>
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-
-        {/* BONNES PRATIQUES */}
-        <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Prévention & bonnes pratiques</Text>
-        <View style={styles.sectionCard}>
-          {bonnesPratiques.map((b, i) => (
-            <View
-              key={i}
-              style={[
-                styles.pratiqueItem,
-                i === bonnesPratiques.length - 1 && { borderBottomWidth: 0 },
-              ]}
-            >
-              <View style={styles.pratiqueDot}>
-                <Ionicons name="information-circle-outline" size={16} color="#1d4ed8" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pratiqueTitre}>{b.titre}</Text>
-                <Text style={styles.pratiqueDesc}>{b.desc}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-
+        <StatsSection stats={stats} loading={loading} />
       </ScrollView>
+
+      <TouchableOpacity
+        style={styles.floatingButton}
+        onPress={() => setMenuVisible(true)}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={32} color="#ffffff" />
+      </TouchableOpacity>
+
+      <MenuPlus visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
     </SafeAreaView>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// STYLES
-// ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container:     { flex: 1, backgroundColor: '#f8fafc' },
-  scrollContent: { padding: 16, paddingBottom: 50 },
-
-  sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: '#94a3b8',
-    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10,
-  },
-  profileIcon: { 
-    fontSize: 22, 
-    color: '#4FCCAE', // La couleur turquoise de ton app
-    fontWeight: 'bold' 
-  },
-  profileIconButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 40,
-    height: 40,
-    // Pour donner un peu de relief comme sur ton ancienne version
-    elevation: 2, 
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
-  },
-
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
-  actionCard: {
-    width: (width - 44) / 2, borderRadius: 14, padding: 16,
-    borderWidth: 1, gap: 6,
-    elevation: 1, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 3,
-  },
-  actionLabel: { fontSize: 13, fontWeight: '700' },
-  actionSub:   { fontSize: 11 },
-
-  sectionCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: '#e2e8f0',
-    elevation: 1, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 3,
-    marginBottom: 4,
-  },
-
-  emptyContainer: { alignItems: 'center', paddingVertical: 24, gap: 8 },
-  emptyText:      { fontSize: 13, color: '#94a3b8' },
-
-  activiteItem: {
-    flexDirection: 'row', gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
-  },
-  activiteIconBox: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#f0fdf4',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  activiteTitre: { fontSize: 13, fontWeight: '700', color: '#1e3a5f' },
-  activiteDesc:  { fontSize: 12, color: '#64748b', marginTop: 2, lineHeight: 16 },
-  activiteDate:  { fontSize: 10, color: '#94a3b8', marginTop: 4 },
-
-  pratiqueItem: {
-    flexDirection: 'row', gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
-  },
-  pratiqueDot: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#eff6ff',
+  container: { flex: 1, backgroundColor: '#f8f9ff' },
+  scrollContent: { padding: 16, paddingBottom: 80 },
+  headerSection: { marginBottom: 20 },
+  mainTitle: { fontSize: 24, fontWeight: '700', color: '#0b1c30', marginBottom: 4, letterSpacing: -0.5 },
+  subTitle: { fontSize: 14, color: '#45464d', marginBottom: 8 },
+  emptyContainer: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  emptyText: { fontSize: 14, color: '#76777d', textAlign: 'center' },
+  floatingButton: {
+    position: 'absolute', bottom: 30, right: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#b45f06',
     justifyContent: 'center', alignItems: 'center',
-    flexShrink: 0, marginTop: 2,
+    elevation: 8, shadowColor: '#b45f06',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, zIndex: 999,
   },
-  pratiqueTitre: { fontSize: 13, fontWeight: '700', color: '#1e3a5f', marginBottom: 3 },
-  pratiqueDesc:  { fontSize: 12, color: '#64748b', lineHeight: 17 },
 });
