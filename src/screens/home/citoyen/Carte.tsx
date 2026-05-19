@@ -38,12 +38,14 @@ interface Signalement {
 
 interface Alerte {
   id: string;
-  latitude_centre: number;
-  longitude_centre: number;
+  id_dossier: string;
+  latitude: number;
+  longitude: number;
   titre?: string;
   message_court?: string;
   statut_alerte?: string;
   date_diffusion?: string;
+  lieu_disparition?: string;
 }
 
 const ONGLETS = [
@@ -52,11 +54,16 @@ const ONGLETS = [
   { key: 'alertes' as OngletKey, label: 'Alertes', icon: 'notifications-outline' },
 ];
 
+// ─── TYPE RÉSULTAT DE RECHERCHE UNIFIÉ ───
+type SearchResult =
+  | { type: 'lieu'; display_name: string; lat: string; lon: string }
+  | { type: 'personne'; id_dossier: string; nom: string; prenom: string; lat: number; lng: number; lieu: string; date: string };
+
 const STATUTS = [
   { value: 'tous', label: 'Tous les statuts' },
   { value: 'en_cours', label: 'En cours' },
-  { value: 'retrouve_vivant', label: 'Retrouvé vivant' },
-  { value: 'retrouve_decede', label: 'Retrouvé décédé' },
+  { value: 'suspendu', label: 'Suspendu' },
+  { value: 'classe_sans_suite', label: 'Classé sans suite' },
 ];
 
 function buildMapHTML(
@@ -64,11 +71,10 @@ function buildMapHTML(
   signalements: Signalement[],
   alertes: Alerte[],
   onglet: OngletKey,
-  recherchePoint: { lat: number; lng: number; nom: string } | null
+  recherchePoint: { lat: number; lng: number; nom: string; type?: 'lieu' | 'personne'; id_dossier?: string } | null
 ): string {
   let markersJS = '';
 
-  // Centrer la carte sur le point recherché ou sur le Cameroun
   let centerLat = 3.8480;
   let centerLng = 11.5021;
   let zoom = 11;
@@ -77,15 +83,30 @@ function buildMapHTML(
     centerLat = recherchePoint.lat;
     centerLng = recherchePoint.lng;
     zoom = 14;
-    // Ajouter un marqueur spécial pour le résultat de recherche
-    markersJS += `
-      new maplibregl.Marker({ color: '#10B981' })
-        .setLngLat([${recherchePoint.lng}, ${recherchePoint.lat}])
-        .setPopup(new maplibregl.Popup().setHTML(
-          '<b>📍 ${recherchePoint.nom}</b><br/>Résultat de recherche'
-        ))
-        .addTo(map);
-    `;
+
+    const nomEscaped = recherchePoint.nom.replace(/'/g, "\\'");
+
+    if (recherchePoint.type === 'personne') {
+      // Marqueur rouge pulsant pour une personne disparue trouvée
+      markersJS += `
+        new maplibregl.Marker({ color: '#EF4444' })
+          .setLngLat([${recherchePoint.lng}, ${recherchePoint.lat}])
+          .setPopup(new maplibregl.Popup({ closeOnClick: false }).setHTML(
+            '<b>🔴 ${nomEscaped}</b><br/>Lieu de disparition'
+          ).addTo(map))
+          .addTo(map);
+      `;
+    } else {
+      // Marqueur vert pour un lieu géographique
+      markersJS += `
+        new maplibregl.Marker({ color: '#10B981' })
+          .setLngLat([${recherchePoint.lng}, ${recherchePoint.lat}])
+          .setPopup(new maplibregl.Popup().setHTML(
+            '<b>📍 ${nomEscaped}</b><br/>Résultat de recherche'
+          ))
+          .addTo(map);
+      `;
+    }
   }
 
   if (onglet === 'personnes') {
@@ -124,14 +145,15 @@ function buildMapHTML(
 
   if (onglet === 'alertes') {
     alertes.forEach((a) => {
-      if (!a.latitude_centre || !a.longitude_centre) return;
-      const titre = a.titre ?? 'Alerte';
+      if (!a.latitude || !a.longitude) return;
+      const titre = (a.titre ?? 'Alerte').replace(/'/g, "\\'");
       const msg = (a.message_court ?? '').substring(0, 80).replace(/'/g, "\\'");
+      const lieu = (a.lieu_disparition ?? '').replace(/'/g, "\\'");
       markersJS += `
         new maplibregl.Marker({ color: '#EF4444' })
-          .setLngLat([${a.longitude_centre}, ${a.latitude_centre}])
+          .setLngLat([${a.longitude}, ${a.latitude}])
           .setPopup(new maplibregl.Popup().setHTML(
-            '<b>🔔 ${titre}</b><br/>${msg}'
+            '<b>🔔 ${titre}</b><br/>📍 ${lieu}<br/>${msg}'
           ))
           .addTo(map);
       `;
@@ -179,10 +201,10 @@ export default function Carte({ navigation }: any) {
   const [statut, setStatut] = useState(STATUTS[0]);
   const [modalStatutVisible, setModalStatutVisible] = useState(false);
   const [recherche, setRecherche] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [recherchePoint, setRecherchePoint] = useState<{ lat: number; lng: number; nom: string } | null>(null);
+  const [recherchePoint, setRecherchePoint] = useState<{ lat: number; lng: number; nom: string; type?: 'lieu' | 'personne'; id_dossier?: string } | null>(null);
 
   const [dossiers, setDossiers] = useState<DossierDisparition[]>([]);
   const [signalements, setSignalements] = useState<Signalement[]>([]);
@@ -190,7 +212,7 @@ export default function Carte({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [mapKey, setMapKey] = useState(0);
 
-  // Recherche de lieux via Nominatim (OpenStreetMap)
+  // ─── RECHERCHE COMBINÉE : lieux (Nominatim) + personnes disparues (Supabase) ───
   const searchLocation = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -200,24 +222,91 @@ export default function Carte({ navigation }: any) {
 
     setSearchLoading(true);
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=cm&limit=10`
-      );
-      const data = await response.json();
-      setSearchResults(data);
-      setShowResults(true);
+      // Lancer les deux recherches en parallèle
+      const [lieuxResult, personnesResult] = await Promise.allSettled([
+        // 1. Recherche de lieux via Nominatim
+        fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=cm&limit=5`,
+          { headers: { 'Accept': 'application/json', 'User-Agent': 'RetrouvonsLes/1.0 (contact@retrouvonsles.vercel.app)' } }
+        ).then(async (res) => {
+          const ct = res.headers.get('content-type') ?? '';
+          if (!res.ok || !ct.includes('application/json')) return [];
+          const data = await res.json();
+          return (Array.isArray(data) ? data : []).map((item: any) => ({
+            type: 'lieu' as const,
+            display_name: item.display_name,
+            lat: item.lat,
+            lon: item.lon,
+          }));
+        }),
+
+        // 2. Recherche de personnes disparues dans Supabase
+        supabase
+          .from('dossier_disparition')
+          .select(`
+            id,
+            lieu_disparition,
+            date_disparition,
+            latitude_disparition,
+            longitude_disparition,
+            statut_dossier,
+            personne ( nom, prenom )
+          `)
+          .not('latitude_disparition', 'is', null)
+          .not('longitude_disparition', 'is', null)
+          .not('statut_dossier', 'in', '("retrouve_vivant","retrouve_decede")')
+          .or(`personne.nom.ilike.%${query.trim()}%,personne.prenom.ilike.%${query.trim()}%`)
+          .limit(5)
+          .then(({ data }) =>
+            (data ?? []).map((d: any) => ({
+              type: 'personne' as const,
+              id_dossier: d.id,
+              nom: d.personne?.nom ?? '',
+              prenom: d.personne?.prenom ?? '',
+              lat: d.latitude_disparition,
+              lng: d.longitude_disparition,
+              lieu: d.lieu_disparition ?? 'Lieu inconnu',
+              date: d.date_disparition
+                ? new Date(d.date_disparition).toLocaleDateString('fr-FR')
+                : 'Date inconnue',
+            }))
+          ),
+      ]);
+
+      const lieux: SearchResult[] = lieuxResult.status === 'fulfilled' ? lieuxResult.value : [];
+      const personnes: SearchResult[] = personnesResult.status === 'fulfilled' ? personnesResult.value : [];
+
+      // Personnes en premier, puis lieux
+      const combined = [...personnes, ...lieux];
+      setSearchResults(combined);
+      setShowResults(combined.length > 0);
     } catch (error) {
-      console.error('Erreur recherche:', error);
+      console.warn('Erreur recherche:', error);
+      setSearchResults([]);
+      setShowResults(false);
     } finally {
       setSearchLoading(false);
     }
   };
 
-  const selectLocation = (item: any) => {
-    const lat = parseFloat(item.lat);
-    const lng = parseFloat(item.lon);
-    setRecherchePoint({ lat, lng, nom: item.display_name.split(',')[0] });
-    setRecherche(item.display_name.split(',')[0]);
+  const selectResult = (item: SearchResult) => {
+    if (item.type === 'personne') {
+      setRecherchePoint({
+        lat: item.lat,
+        lng: item.lng,
+        nom: `${item.prenom} ${item.nom}`,
+        type: 'personne',
+        id_dossier: item.id_dossier,
+      });
+      setRecherche(`${item.prenom} ${item.nom}`);
+      // Basculer sur l'onglet personnes
+      setOngletActif('personnes');
+    } else {
+      const lat = parseFloat(item.lat);
+      const lng = parseFloat(item.lon);
+      setRecherchePoint({ lat, lng, nom: item.display_name.split(',')[0], type: 'lieu' });
+      setRecherche(item.display_name.split(',')[0]);
+    }
     setShowResults(false);
     Keyboard.dismiss();
     setMapKey(prev => prev + 1);
@@ -237,8 +326,12 @@ export default function Carte({ navigation }: any) {
         personne ( nom, prenom )
       `)
       .not('latitude_disparition', 'is', null)
-      .not('longitude_disparition', 'is', null);
+      .not('longitude_disparition', 'is', null)
+      // Masquer les personnes retrouvées (sauf si filtre explicite)
+      .not('statut_dossier', 'in', '("retrouve_vivant","retrouve_decede")');
+
     if (statut.value !== 'tous') query = query.eq('statut_dossier', statut.value);
+
     const { data, error } = await query;
     if (!error && data) {
       const formatted = (data as any[]).map(d => ({
@@ -269,13 +362,45 @@ export default function Carte({ navigation }: any) {
   }, [statut]);
 
   const fetchAlertes = useCallback(async () => {
+    // On récupère les coordonnées depuis dossier_disparition car
+    // la table alerte n'a pas forcément latitude_centre/longitude_centre
     const { data, error } = await supabase
       .from('alerte')
-      .select(`id, latitude_centre, longitude_centre, titre, message_court, statut_alerte, date_diffusion`)
-      .not('latitude_centre', 'is', null)
-      .not('longitude_centre', 'is', null)
-      .eq('statut_alerte', 'en_cours');
-    if (!error) setAlertes(data ?? []);
+      .select(`
+        id, titre, message_court, statut_alerte, date_diffusion, id_dossier,
+        dossier_disparition (
+          id, latitude_disparition, longitude_disparition, lieu_disparition,
+          statut_dossier
+        )
+      `)
+      .eq('statut_alerte', 'en_cours')
+      .eq('validee', true);
+
+    if (!error && data) {
+      const formatted: Alerte[] = (data as any[])
+        .filter((a) => {
+          const d = a.dossier_disparition;
+          // Garder seulement si coordonnées disponibles et personne non retrouvée
+          return (
+            d?.latitude_disparition &&
+            d?.longitude_disparition &&
+            d?.statut_dossier !== 'retrouve_vivant' &&
+            d?.statut_dossier !== 'retrouve_decede'
+          );
+        })
+        .map((a) => ({
+          id: a.id,
+          id_dossier: a.id_dossier,
+          latitude: a.dossier_disparition.latitude_disparition,
+          longitude: a.dossier_disparition.longitude_disparition,
+          titre: a.titre,
+          message_court: a.message_court,
+          statut_alerte: a.statut_alerte,
+          date_diffusion: a.date_diffusion,
+          lieu_disparition: a.dossier_disparition.lieu_disparition,
+        }));
+      setAlertes(formatted);
+    }
   }, []);
 
   const fetchAll = useCallback(async () => {
@@ -339,15 +464,44 @@ export default function Carte({ navigation }: any) {
           <View style={styles.searchResults}>
             <FlatList
               data={searchResults}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.resultItem} onPress={() => selectLocation(item)}>
-                  <Ionicons name="location-outline" size={16} color="#b45f06" />
-                  <Text style={styles.resultText} numberOfLines={1}>
-                    {item.display_name.split(',')[0]}, {item.display_name.split(',')[1]}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              keyExtractor={(item, index) => `${item.type}-${index}`}
+              renderItem={({ item }) => {
+                if (item.type === 'personne') {
+                  return (
+                    <TouchableOpacity style={styles.resultItem} onPress={() => selectResult(item)}>
+                      <View style={styles.resultIconPerson}>
+                        <Ionicons name="person" size={14} color="#fff" />
+                      </View>
+                      <View style={styles.resultTexts}>
+                        <Text style={styles.resultName}>{item.prenom} {item.nom}</Text>
+                        <Text style={styles.resultSub} numberOfLines={1}>
+                          Disparu à {item.lieu} · {item.date}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+                return (
+                  <TouchableOpacity style={styles.resultItem} onPress={() => selectResult(item)}>
+                    <Ionicons name="location-outline" size={16} color="#b45f06" />
+                    <View style={styles.resultTexts}>
+                      <Text style={styles.resultText} numberOfLines={1}>
+                        {item.display_name.split(',')[0]}
+                      </Text>
+                      <Text style={styles.resultSub} numberOfLines={1}>
+                        {item.display_name.split(',').slice(1, 3).join(',')}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              ListHeaderComponent={
+                searchResults.some(r => r.type === 'personne') ? (
+                  <View style={styles.resultSectionHeader}>
+                    <Text style={styles.resultSectionTitle}>Personnes disparues</Text>
+                  </View>
+                ) : null
+              }
             />
           </View>
         )}
@@ -495,7 +649,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
+  resultTexts: { flex: 1 },
   resultText: { flex: 1, fontSize: 13, color: '#1e293b' },
+  resultName: { fontSize: 13, fontWeight: '700', color: '#0b1c30' },
+  resultSub: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  resultIconPerson: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  resultSectionHeader: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+  },
+  resultSectionTitle: { fontSize: 10, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   filtersRow: {
     flexDirection: 'row',

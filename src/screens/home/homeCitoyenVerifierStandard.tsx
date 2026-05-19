@@ -2,12 +2,16 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, SafeAreaView,
   TouchableOpacity, StatusBar, ActivityIndicator,
-  RefreshControl, Dimensions, Image, Modal, Share,
+  RefreshControl, Dimensions, Image, Modal, Share, Alert, Linking, Platform,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import RNFS from 'react-native-fs';
 import { supabase } from '../../services/supabase';
+
+// ─── CONSTANTES ───
+const SITE_WEB = 'https://retrouvonsles.vercel.app';
 
 const { width } = Dimensions.get('window');
 
@@ -35,10 +39,10 @@ type Alerte = {
 // ─────────────────────────────────────────────────────────────
 function MenuPlus({ visible, onClose, navigation }: any) {
   const items = [
-    { icon: 'add-circle-outline', label: 'Nouveau signalement', screen: 'NouveauSignalement', color: '#000000' },
-    { icon: 'heart-outline', label: 'Dons & Campagnes', screen: 'Dons', color: '#b45f06' },
-    { icon: 'person-outline', label: 'Profil disparition', screen: 'ProfilDisparition', color: '#000000' },
+    { icon: 'chatbubbles-outline', label: 'Messagerie', screen: 'ConversationsList', color: '#b45f06' },
+    { icon: 'alert-circle-outline', label: 'SOS Urgence', screen: 'SOS', color: '#dc2626' },
   ];
+
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -112,7 +116,7 @@ function AppHeader({ alertesCount = 0, initiales = '?', verifie = false, onProfi
         </View>
 
         <TouchableOpacity style={hS.bellBtn} onPress={() => navigation.navigate('Alertes')}>
-          <Ionicons name="notifications-outline" size={24} color="#1e3a5f" />
+          <Ionicons name="notifications-outline" size={24} color="#0b1c30" />
           {alertesCount > 0 && (
             <View style={hS.badge}>
               <Text style={hS.badgeText}>{alertesCount > 9 ? '9+' : alertesCount}</Text>
@@ -388,20 +392,17 @@ const statsClesS = StyleSheet.create({
 });
 
 // ─── ALERTES RÉCENTES HEADER ───
-function AlertesRecentesHeader({ onVoirTout }: { onVoirTout: () => void }) {
+function AlertesRecentesHeader() {
   return (
     <View style={alertesHeaderS.container}>
       <Text style={alertesHeaderS.title}>Alertes récentes</Text>
-      
+      <Text style={alertesHeaderS.subtitle}>Disparitions signalées ces 30 derniers jours</Text>
     </View>
   );
 }
 
 const alertesHeaderS = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 16,
   },
   title: {
@@ -409,15 +410,90 @@ const alertesHeaderS = StyleSheet.create({
     fontWeight: '800',
     color: '#0b1c30',
   },
-  voirTout: {
-    fontSize: 13,
-    color: '#b45f06',
-    fontWeight: '600',
+  subtitle: {
+    fontSize: 12,
+    color: '#76777d',
+    marginTop: 2,
   },
+});
+
+// ─── MODAL CHOIX PARTAGE ───
+function ModalPartage({ visible, onClose, onWhatsApp, onFacebook, onAutre }: any) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={partageStyles.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={partageStyles.container}>
+          <View style={partageStyles.handle} />
+          <Text style={partageStyles.title}>Partager l'alerte</Text>
+          <Text style={partageStyles.subtitle}>Choisissez comment partager cette alerte de disparition</Text>
+
+
+
+          {/* WhatsApp */}
+          <TouchableOpacity style={partageStyles.option} onPress={onWhatsApp} activeOpacity={0.8}>
+            <View style={[partageStyles.iconBox, { backgroundColor: '#dcfce7' }]}>
+              <Ionicons name="logo-whatsapp" size={26} color="#16a34a" />
+            </View>
+            <View style={partageStyles.optionTexts}>
+              <Text style={partageStyles.optionLabel}>WhatsApp</Text>
+              <Text style={partageStyles.optionDesc}>Partager le message + lien vers le dossier</Text>
+            </View>
+            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
+          </TouchableOpacity>
+
+          {/* Facebook */}
+          <TouchableOpacity style={partageStyles.option} onPress={onFacebook} activeOpacity={0.8}>
+            <View style={[partageStyles.iconBox, { backgroundColor: '#dbeafe' }]}>
+              <Ionicons name="logo-facebook" size={26} color="#1d4ed8" />
+            </View>
+            <View style={partageStyles.optionTexts}>
+              <Text style={partageStyles.optionLabel}>Facebook</Text>
+              <Text style={partageStyles.optionDesc}>Partager le lien du dossier sur Facebook</Text>
+            </View>
+            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
+          </TouchableOpacity>
+
+          {/* Autre */}
+          <TouchableOpacity style={partageStyles.option} onPress={onAutre} activeOpacity={0.8}>
+            <View style={[partageStyles.iconBox, { backgroundColor: '#f1f5f9' }]}>
+              <Ionicons name="share-social-outline" size={26} color="#475569" />
+            </View>
+            <View style={partageStyles.optionTexts}>
+              <Text style={partageStyles.optionLabel}>Autre application</Text>
+              <Text style={partageStyles.optionDesc}>SMS, email, Telegram...</Text>
+            </View>
+            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={partageStyles.btnFermer} onPress={onClose}>
+            <Text style={partageStyles.btnFermerText}>Annuler</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const partageStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  container: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 44 },
+  handle: { width: 40, height: 4, backgroundColor: '#c6c6cd', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  title: { fontSize: 18, fontWeight: '800', color: '#0b1c30', marginBottom: 4 },
+  subtitle: { fontSize: 12, color: '#76777d', marginBottom: 20 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  iconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  optionTexts: { flex: 1 },
+  optionLabel: { fontSize: 15, fontWeight: '700', color: '#0b1c30' },
+  optionDesc: { fontSize: 12, color: '#76777d', marginTop: 2 },
+  btnFermer: { backgroundColor: '#f1f5f9', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
+  btnFermerText: { color: '#0b1c30', fontWeight: '600', fontSize: 14 },
 });
 
 // ─── CARTE ALERTE COMPLÈTE ───
 function AlerteCard({ alerte, onPress, onReportSeen, onShare }: any) {
+  const [modalPartageVisible, setModalPartageVisible] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
   const ageMoyen = alerte.personne_age_estime_min && alerte.personne_age_estime_max
     ? Math.floor((alerte.personne_age_estime_min + alerte.personne_age_estime_max) / 2)
     : alerte.personne_age_estime_min || alerte.personne_age_estime_max || 0;
@@ -428,6 +504,115 @@ function AlerteCard({ alerte, onPress, onReportSeen, onShare }: any) {
     : `Disparu depuis ${Math.floor(diffHeures / 24)} jours`;
 
   const ageText = ageMoyen > 0 ? `${ageMoyen} ans` : 'Âge inconnu';
+
+  // Lien universel : ouvre le site web, sera intercepté par l'app quand elle sera déployée
+  const lienDossier = `${SITE_WEB}/dossier/${alerte.id_dossier}`;
+
+  const messageTexte =
+    `🔴 *ALERTE DISPARITION* 🔴\n\n` +
+    `👤 *${alerte.personne_prenom} ${alerte.personne_nom}*\n` +
+    `🎂 *Âge :* ${ageMoyen > 0 ? `${ageMoyen} ans` : 'Inconnu'}\n` +
+    `📍 *Dernier lieu vu :* ${alerte.lieu_disparition || 'Inconnu'}\n` +
+    `📅 *Disparu(e) le :* ${new Date(alerte.date_diffusion).toLocaleDateString('fr-FR')}\n\n` +
+    `🔗 *Voir le dossier complet et signaler une information :*\n${lienDossier}\n\n` +
+    `🤝 _RetrouvonsLes — Ensemble, retrouvons-les_`;
+
+  // Télécharge la photo distante dans le cache local et retourne le chemin
+  const downloadPhoto = async (url: string): Promise<string | null> => {
+    try {
+      setDownloading(true);
+      const ext = url.split('?')[0].split('.').pop() ?? 'jpg';
+      const localPath = `${RNFS.CachesDirectoryPath}/alerte_${alerte.id_dossier}.${ext}`;
+
+      // Si déjà en cache, on réutilise
+      const exists = await RNFS.exists(localPath);
+      if (!exists) {
+        await RNFS.downloadFile({ fromUrl: url, toFile: localPath }).promise;
+      }
+      return localPath;
+    } catch (err) {
+      console.warn('Erreur téléchargement photo:', err);
+      return null;
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleWhatsApp = async () => {
+    setModalPartageVisible(false);
+    try {
+      // Si une photo existe, on la télécharge et on partage via le menu natif
+      // (WhatsApp intercepte le partage natif avec image)
+      if (alerte.personne_photo_principale) {
+        const localPath = await downloadPhoto(alerte.personne_photo_principale);
+        if (localPath) {
+          const fileUri = Platform.OS === 'android' ? `file://${localPath}` : localPath;
+          await Share.share({
+            title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`,
+            message: messageTexte,
+            url: fileUri,
+          });
+          return;
+        }
+      }
+      // Pas de photo ou échec téléchargement → partage texte seul via WhatsApp
+      const url = `whatsapp://send?text=${encodeURIComponent(messageTexte)}`;
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(messageTexte)}`);
+      }
+    } catch (error) {
+      Alert.alert('Erreur', "Impossible d'ouvrir WhatsApp.");
+    }
+  };
+
+  const handleFacebook = async () => {
+    setModalPartageVisible(false);
+    try {
+      // Facebook ne permet pas le partage de texte libre via deep link,
+      // on partage le lien du dossier (qui contient la photo sur le site web)
+      const urlNative = `fb://share?link=${encodeURIComponent(lienDossier)}`;
+      const supported = await Linking.canOpenURL(urlNative);
+      if (supported) {
+        await Linking.openURL(urlNative);
+      } else {
+        await Linking.openURL(
+          `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(lienDossier)}&quote=${encodeURIComponent(`🔴 ALERTE DISPARITION — ${alerte.personne_prenom} ${alerte.personne_nom}`)}`
+        );
+      }
+    } catch (error) {
+      Alert.alert('Erreur', "Impossible d'ouvrir Facebook.");
+    }
+  };
+
+  const handleAutre = async () => {
+    setModalPartageVisible(false);
+    try {
+      // Avec photo si disponible
+      if (alerte.personne_photo_principale) {
+        const localPath = await downloadPhoto(alerte.personne_photo_principale);
+        if (localPath) {
+          const fileUri = Platform.OS === 'android' ? `file://${localPath}` : localPath;
+          await Share.share({
+            title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`,
+            message: messageTexte,
+            url: fileUri,
+          });
+          return;
+        }
+      }
+      // Sans photo
+      await Share.share({
+        title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`,
+        message: messageTexte,
+        url: lienDossier,
+      });
+    } catch (error) {
+      console.error('Erreur partage:', error);
+    }
+  };
 
   return (
     <View style={cardStyles.card}>
@@ -459,11 +644,22 @@ function AlerteCard({ alerte, onPress, onReportSeen, onShare }: any) {
         <TouchableOpacity style={cardStyles.reportBtn} onPress={onReportSeen}>
           <Text style={cardStyles.reportBtnText}>SIGNALER VU</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={cardStyles.shareBtn} onPress={onShare}>
-          <Ionicons name="share-outline" size={16} color="#b45f06" />
-          <Text style={cardStyles.shareBtnText}>PARTAGER</Text>
+        <TouchableOpacity style={cardStyles.shareBtn} onPress={() => setModalPartageVisible(true)}>
+          {downloading
+            ? <ActivityIndicator size="small" color="#b45f06" />
+            : <Ionicons name="share-social-outline" size={16} color="#b45f06" />
+          }
+          <Text style={cardStyles.shareBtnText}>{downloading ? 'CHARGEMENT...' : 'PARTAGER'}</Text>
         </TouchableOpacity>
       </View>
+
+      <ModalPartage
+        visible={modalPartageVisible}
+        onClose={() => setModalPartageVisible(false)}
+        onWhatsApp={handleWhatsApp}
+        onFacebook={handleFacebook}
+        onAutre={handleAutre}
+      />
     </View>
   );
 }
@@ -486,17 +682,14 @@ const cardStyles = StyleSheet.create({
   shareBtnText: { color: '#b45f06', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
 });
 
-// ─── SECTION PERSONNES DISPARUES ───
-function PersonnesDisparues({ onVoirTout }: { onVoirTout: () => void }) {
+// ─── SECTION PERSONNES DISPARUES (SANS LE BOUTON VOIR TOUT) ───
+function PersonnesDisparues() {
   return (
     <View style={personnesS.container}>
       <Text style={personnesS.title}>Personnes disparues</Text>
       <Text style={personnesS.description}>
         Vos informations peuvent aider à retrouver vos proches. Votre famille est en danger.
       </Text>
-      <TouchableOpacity style={personnesS.button} onPress={onVoirTout}>
-        <Text style={personnesS.buttonText}>Voir tout →</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -520,15 +713,6 @@ const personnesS = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     lineHeight: 18,
-    marginBottom: 12,
-  },
-  button: {
-    alignSelf: 'flex-start',
-  },
-  buttonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#b45f06',
   },
 });
 
@@ -689,7 +873,7 @@ const partenairesS = StyleSheet.create({
 });
 
 // ─── SECTION RÉSEAU SOCIAL ───
-function SectionReseauSocial() {
+function SectionReseauSocial({ navigation }: any) {
   return (
     <View style={reseauS.container}>
       <View style={reseauS.iconBox}>
@@ -702,7 +886,8 @@ function SectionReseauSocial() {
       <TouchableOpacity style={reseauS.btn}>
         <Text style={reseauS.btnText}>Rejoindre le Réseau →</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={reseauS.btnDon}>
+      <TouchableOpacity style={reseauS.btnDon} onPress={() => navigation.navigate('Dons')}>
+        <Ionicons name="heart-outline" size={16} color="#fff" />
         <Text style={reseauS.btnDonText}>Faire un don à notre association</Text>
       </TouchableOpacity>
     </View>
@@ -732,7 +917,7 @@ const reseauS = StyleSheet.create({
   description: { fontSize: 12, color: '#64748b', textAlign: 'center', marginBottom: 16, lineHeight: 18 },
   btn: { marginBottom: 12 },
   btnText: { fontSize: 13, fontWeight: '600', color: '#b45f06' },
-  btnDon: { backgroundColor: '#0b1c30', borderRadius: 30, paddingVertical: 10, paddingHorizontal: 20 },
+  btnDon: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0b1c30', borderRadius: 30, paddingVertical: 10, paddingHorizontal: 20 },
   btnDonText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 });
 
@@ -797,30 +982,15 @@ export default function Home({ navigation: navProp }: any) {
   };
 
   const handleReportSeen = (alerte: Alerte) => {
-    navigation.navigate('NouveauSignalement', {
+    navigation.navigate('VoirSignalement', {
       dossierId: alerte.id_dossier,
+      nomPersonne: alerte.personne_nom,
+      prenomPersonne: alerte.personne_prenom,
+      modeSignalerVu: true,
     });
   };
 
-  const handleShare = async (alerte: Alerte) => {
-    try {
-      const ageMoyen = alerte.personne_age_estime_min && alerte.personne_age_estime_max
-        ? Math.floor((alerte.personne_age_estime_min + alerte.personne_age_estime_max) / 2)
-        : alerte.personne_age_estime_min || alerte.personne_age_estime_max || 0;
-
-      await Share.share({
-        title: `Disparition - ${alerte.personne_prenom} ${alerte.personne_nom}`,
-        message:
-          `🔍 ALERTE DISPARITION\n\n` +
-          `Nom: ${alerte.personne_prenom} ${alerte.personne_nom}\n` +
-          `Âge: ${ageMoyen > 0 ? ageMoyen : 'Inconnu'} ans\n` +
-          `Lieu: ${alerte.lieu_disparition}\n` +
-          `📢 Partager pour aider à retrouver cette personne !\nVia l'application RetrouvonsLes`,
-      });
-    } catch (error) {
-      console.error('Erreur partage:', error);
-    }
-  };
+  // Le partage est géré directement dans AlerteCard (WhatsApp / Facebook / Autre)
 
   const fetchData = useCallback(async () => {
     try {
@@ -843,19 +1013,30 @@ export default function Home({ navigation: navProp }: any) {
         setVerifie(u.statut_compte === 'actif');
       }
 
+      // Filtre : alertes des 30 derniers jours, en cours, validées, personne non retrouvée
+      const trente_jours_ago = new Date();
+      trente_jours_ago.setDate(trente_jours_ago.getDate() - 30);
+
       const { data: alertesData, error: alertesError } = await supabase
         .from('alerte')
         .select(`
           id, titre, message_court, statut_alerte, date_diffusion, rayon_km, id_dossier,
-          dossier_disparition ( id, lieu_disparition, personne ( nom, prenom, age_estime_min, age_estime_max, taille_cm, poids_kg, photo_principale ) )
+          dossier_disparition ( id, lieu_disparition, statut_dossier, personne ( nom, prenom, age_estime_min, age_estime_max, taille_cm, poids_kg, photo_principale ) )
         `)
         .eq('statut_alerte', 'en_cours')
         .eq('validee', true)
+        .gte('date_diffusion', trente_jours_ago.toISOString())
         .order('date_diffusion', { ascending: false })
         .limit(5);
 
       if (!alertesError && alertesData) {
-        const formatted: Alerte[] = alertesData.map((item: any) => {
+        const formatted: Alerte[] = alertesData
+          // Masquer les personnes retrouvées
+          .filter((item: any) => {
+            const statut = item.dossier_disparition?.statut_dossier;
+            return statut !== 'retrouve_vivant' && statut !== 'retrouve_decede';
+          })
+          .map((item: any) => {
           const dossier = item.dossier_disparition;
           const personne = dossier?.personne || {};
           return {
@@ -936,13 +1117,13 @@ export default function Home({ navigation: navProp }: any) {
         <StatsCles />
 
         {/* ALERTES RÉCENTES */}
-        <AlertesRecentesHeader onVoirTout={() => navigation.navigate('Dossier')} />
+        <AlertesRecentesHeader />
 
         {loading ? (
           <ActivityIndicator size="large" color="#b45f06" style={{ paddingVertical: 20 }} />
         ) : alertes.length === 0 ? (
           <View style={styles.emptyAlertes}>
-            <Text style={styles.emptyAlertesText}>Aucune alerte récente</Text>
+            <Text style={styles.emptyAlertesText}>Aucune alerte ces 30 derniers jours</Text>
           </View>
         ) : (
           alertes.map((alerte) => (
@@ -951,13 +1132,23 @@ export default function Home({ navigation: navProp }: any) {
               alerte={alerte}
               onPress={() => navigation.navigate('VoirDossier', { id: alerte.id_dossier })}
               onReportSeen={() => handleReportSeen(alerte)}
-              onShare={() => handleShare(alerte)}
             />
           ))
         )}
 
-        {/* PERSONNES DISPARUES */}
-        <PersonnesDisparues onVoirTout={() => navigation.navigate('Dossier')} />
+        {/* BOUTON VOIR TOUTES LES ALERTES */}
+        <TouchableOpacity
+          style={styles.voirToutesBtn}
+          onPress={() => navigation.navigate('Alertes')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="notifications-outline" size={18} color="#0b1c30" />
+          <Text style={styles.voirToutesBtnText}>Voir toutes les alertes en cours</Text>
+          <Ionicons name="arrow-forward" size={16} color="#0b1c30" />
+        </TouchableOpacity>
+
+        {/* PERSONNES DISPARUES - SANS BOUTON */}
+        <PersonnesDisparues />
 
         {/* TEMOIGNAGES */}
         <SectionTemoignages />
@@ -966,7 +1157,7 @@ export default function Home({ navigation: navProp }: any) {
         <SectionPartenaires />
 
         {/* RÉSEAU SOCIAL */}
-        <SectionReseauSocial />
+        <SectionReseauSocial navigation={navigation} />
 
         {/* FOOTER */}
         <Footer />
@@ -1008,5 +1199,25 @@ const styles = StyleSheet.create({
   emptyAlertesText: {
     fontSize: 13,
     color: '#94a3b8',
+  },
+  voirToutesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: '#0b1c30',
+  },
+  voirToutesBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0b1c30',
+    flex: 1,
+    textAlign: 'center',
   },
 });

@@ -4,11 +4,11 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { View } from 'react-native';
+import { View, ActivityIndicator, Text, Linking } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // Services & Context
-import { AuthProvider } from './src/context/AuthContext'; // ✅ CORRIGÉ
+import { AuthProvider } from './src/context/AuthContext';
 
 // --- IMPORT DES ECRANS ---
 import SplashScreen from './src/screens/SplashScreen';
@@ -18,17 +18,20 @@ import SignUp from './src/screens/SignUp';
 import Home from './src/screens/Home';
 import HomeAdmin from './src/screens/HomeAdmin';
 import ProfilUtilisateur from './src/screens/ProfilUtilisateur';
-import ProfilDisparition from './src/screens/home/citoyen/ProfilDisparition';
 
 // Écrans citoyen
 import Alertes from './src/screens/home/citoyen/Alertes';
 import Signalement from './src/screens/home/citoyen/Signalement';
 import Dossier from './src/screens/home/citoyen/Dossier';
 import CartePage from './src/screens/home/citoyen/Carte';
-import NouveauSignalement from './src/screens/home/citoyen/NouveauSignalement';
+import MotDePasseOublie from './src/screens/MotDePasseOublie';
+import PolitiqueConfidentialite from './src/screens/PolitiqueConfidentialite';
 import DonsPage from './src/screens/home/citoyen/Dons';
 import VoirDossier from './src/screens/home/citoyen/VoirDossier';
 import VoirSignalement from './src/screens/home/citoyen/VoirSignalement';
+import SOS from './src/screens/home/citoyen/SOS';
+import ConversationsList from './src/screens/home/citoyen/ConversationsList';
+import ConversationDetail from './src/screens/home/citoyen/ConversationDetail';
 
 // Écrans pros
 import HomePolice from './src/screens/home/homePolice';
@@ -78,7 +81,7 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // ─────────────────────────────────────────────────────────────
-// NAVIGATION BASSE CITOYENS (4 onglets, SANS bouton +)
+// NAVIGATION BASSE CITOYENS (4 onglets + bouton flottant séparé)
 // ─────────────────────────────────────────────────────────────
 function MainTabs() {
   return (
@@ -87,7 +90,7 @@ function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: { backgroundColor: '#ffffff', borderTopColor: '#c6c6cd', height: 60, paddingBottom: 8 },
-        tabBarActiveTintColor: '#b45f06', // ORANGE SOMBRE
+        tabBarActiveTintColor: '#b45f06',
         tabBarInactiveTintColor: '#76777d',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '500', letterSpacing: 0.3 },
       }}
@@ -140,15 +143,115 @@ function MainTabs() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// NAVIGATION PRINCIPALE
+// NAVIGATION PRINCIPALE AVEC DEEP LINKING
 // ─────────────────────────────────────────────────────────────
 function App() {
+  const [initialRoute, setInitialRoute] = useState<string | null>(null);
+  const [initialParams, setInitialParams] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // ─── NOTIFICATIONS PUSH FIREBASE ───
+  useEffect(() => {
+    let unsubscribeForeground: (() => void) | undefined;
+
+    const setupFCM = async () => {
+      try {
+        const { default: messaging } = await import('@react-native-firebase/messaging');
+
+        await messaging().requestPermission().catch(() => {});
+
+        unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
+          console.log('📲 Notification foreground:', remoteMessage.notification?.title);
+        });
+
+        messaging().onNotificationOpenedApp((remoteMessage) => {
+          const dossierId = remoteMessage.data?.dossier_id as string | undefined;
+          if (dossierId) {
+            setInitialRoute('VoirDossier');
+            setInitialParams({ id: dossierId });
+          } else {
+            setInitialRoute('Alertes');
+          }
+        });
+
+        const remoteMessage = await messaging().getInitialNotification();
+        if (remoteMessage) {
+          const dossierId = remoteMessage.data?.dossier_id as string | undefined;
+          if (dossierId) {
+            setInitialRoute('VoirDossier');
+            setInitialParams({ id: dossierId });
+          } else {
+            setInitialRoute('Alertes');
+          }
+        }
+      } catch (err) {
+        console.log('FCM non disponible:', err);
+      }
+    };
+
+    setupFCM();
+
+    return () => {
+      unsubscribeForeground?.();
+    };
+  }, []);
+
+  // Gestion des liens profonds (deep linking)
+  useEffect(() => {
+    const handleDeepLink = async (url: string | null) => {
+      console.log('🔗 Lien profond reçu:', url);
+      
+      if (!url) return;
+
+      let match = url.match(/retrouvonsles:\/\/dossier\/(.+)/);
+      if (match && match[1]) {
+        const dossierId = match[1];
+        setInitialRoute('VoirDossier');
+        setInitialParams({ id: dossierId });
+        return;
+      }
+
+      match = url.match(/retrouvonsles\.vercel\.app\/disparition\/(.+)/);
+      if (match && match[1]) {
+        const dossierId = match[1];
+        setInitialRoute('VoirDossier');
+        setInitialParams({ id: dossierId });
+        return;
+      }
+    };
+
+    Linking.getInitialURL().then((url) => {
+      handleDeepLink(url);
+      setIsLoading(false);
+    });
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8f9ff' }}>
+        <ActivityIndicator size="large" color="#b45f06" />
+        <Text style={{ marginTop: 12, color: '#0b1c30', fontSize: 14 }}>Chargement...</Text>
+      </View>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <SafeAreaProvider>
           <NavigationContainer>
-            <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+            <Stack.Navigator 
+              initialRouteName={initialRoute || 'Splash'} 
+              screenOptions={{ headerShown: false }}
+            >
               {/* Auth */}
               <Stack.Screen name="Splash" component={SplashScreen} />
               <Stack.Screen name="Onboarding" component={Onboarding} />
@@ -162,12 +265,19 @@ function App() {
               </Stack.Screen>
 
               {/* Écrans modaux */}
-              <Stack.Screen name="NouveauSignalement" component={NouveauSignalement} />
+              <Stack.Screen name="MotDePasseOublie" component={MotDePasseOublie} />
+              <Stack.Screen name="PolitiqueConfidentialite" component={PolitiqueConfidentialite} />
               <Stack.Screen name="Dons" component={DonsPage} />
-              <Stack.Screen name="VoirDossier" component={VoirDossier} />
+              <Stack.Screen name="VoirDossier" component={VoirDossier} initialParams={initialParams} />
               <Stack.Screen name="Alertes" component={Alertes} />
               <Stack.Screen name="VoirSignalement" component={VoirSignalement} />
-              <Stack.Screen name="ProfilDisparition" component={ProfilDisparition} />
+
+              {/* SOS - accessible uniquement via le bouton flottant */}
+              <Stack.Screen name="SOS" component={SOS} />
+
+              {/* Messagerie - accessible uniquement via le bouton flottant */}
+              <Stack.Screen name="ConversationsList" component={ConversationsList} />
+              <Stack.Screen name="ConversationDetail" component={ConversationDetail} />
 
               {/* Pros */}
               <Stack.Screen name="homeAdmin">{(props) => <HomeAdmin {...props} level={6} />}</Stack.Screen>

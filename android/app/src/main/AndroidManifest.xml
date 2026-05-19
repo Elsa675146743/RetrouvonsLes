@@ -24,10 +24,50 @@
         android:launchMode="singleTask"
         android:windowSoftInputMode="adjustResize"
         android:exported="true">
+        
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        
+        <!-- ✅ LIEN PROFOND POUR L'APPLICATION (schéma personnalisé) -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="retrouvonsles" android:host="dossier" />
+        </intent-filter>
+        
+        <!-- ✅ DEEP LINK : lien /dossier/ID partagé sur WhatsApp/Facebook -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https"
+                  android:host="retrouvonsles.vercel.app"
+                  android:pathPrefix="/dossier" />
+        </intent-filter>
+
+        <!-- ✅ DEEP LINK : lien /disparition/ID (ancien format) -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https"
+                  android:host="retrouvonsles.vercel.app"
+                  android:pathPrefix="/disparition" />
+        </intent-filter>
+
+        <!-- ✅ DEEP LINK : HTTP (au cas où le lien n'est pas HTTPS) -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="http"
+                  android:host="retrouvonsles.vercel.app"
+                  android:pathPrefix="/dossier" />
+        </intent-filter>
+        
       </activity>
     </application>
 </manifest>

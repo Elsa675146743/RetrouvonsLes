@@ -1,212 +1,488 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, SafeAreaView,
-  TouchableOpacity, StatusBar, ActivityIndicator, Image
+  TouchableOpacity, StatusBar, ActivityIndicator, Image, Dimensions,
+  TextInput,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { WebView } from 'react-native-webview';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { supabase } from '../../../services/supabase';
 
-export default function VoirSignalement({ navigation, route }: any) {
-  const signalementId = route?.params?.signalementId || null;
-  const [signalement, setSignalement] = useState<any>(null);
-  const [photos, setPhotos]           = useState<any[]>([]);
-  const [loading, setLoading]         = useState(true);
+const { width } = Dimensions.get('window');
+const MAPTILER_KEY = 'QC2faDaY0B4wB6W510Cu';
 
-  const fetchSignalement = useCallback(async () => {
-    if (!signalementId) return;
+// ─── FONCTION POUR GÉNÉRER LA CARTE ───
+function buildMapHTML(latitude: number | null, longitude: number | null): string {
+  if (!latitude || !longitude) {
+    return '<div style="padding:20px;text-align:center;font-family:sans-serif">📍 Cliquez sur la carte pour définir la position</div>';
+  }
+  
+  return `<!DOCTYPE html>
+  <html>
+    <head>
+      <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no"/>
+      <script src="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.js"></script>
+      <link href="https://cdn.maptiler.com/maplibre-gl-js/v2.4.0/maplibre-gl.css" rel="stylesheet"/>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #map { width: 100%; height: 100%; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var marker = null;
+        var map = new maplibregl.Map({
+          container: 'map',
+          style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}',
+          center: [${longitude}, ${latitude}],
+          zoom: 14,
+        });
+        
+        marker = new maplibregl.Marker({ color: '#b45f06', draggable: true })
+          .setLngLat([${longitude}, ${latitude}])
+          .addTo(map);
+        
+        marker.on('dragend', function() {
+          var ll = marker.getLngLat();
+          window.ReactNativeWebView.postMessage(JSON.stringify({ lat: ll.lat, lng: ll.lng }));
+        });
+        
+        map.on('click', function(e) {
+          var lat = e.lngLat.lat;
+          var lng = e.lngLat.lng;
+          marker.setLngLat([lng, lat]);
+          window.ReactNativeWebView.postMessage(JSON.stringify({ lat: lat, lng: lng }));
+        });
+        
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map.addControl(new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+        }), 'top-right');
+      </script>
+    </body>
+  </html>`;
+}
+
+export default function NouveauSignalement({ navigation, route }: any) {
+  const dossierId = route?.params?.dossierId || route?.params?.dossier?.id;
+
+  // États du formulaire
+  const [description, setDescription] = useState('');
+  const [dateObservation, setDateObservation] = useState('');
+  const [heureObservation, setHeureObservation] = useState('');
+  const [lieuObservation, setLieuObservation] = useState('');
+  const [ville, setVille] = useState('');
+  const [region, setRegion] = useState('');
+  const [niveauCertitude, setNiveauCertitude] = useState('probable');
+  const [contexte, setContexte] = useState('');
+  const [directionDeplacement, setDirectionDeplacement] = useState('');
+  const [photos, setPhotos] = useState<any[]>([]);
+  
+  // Localisation
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  
+  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [mapKey, setMapKey] = useState(0);
+
+  const certitudeOptions = [
+    { value: 'certain', label: 'Certain' },
+    { value: 'tres_probable', label: 'Très probable' },
+    { value: 'probable', label: 'Probable' },
+    { value: 'incertain', label: 'Incertain' },
+  ];
+
+  // Recherche de lieux
+  const searchLocation = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+    setLoading(true);
     try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('signalement')
-        .select(`
-          id, numero_signalement, description,
-          lieu_observation, ville_observation, region_observation,
-          pays_observation, latitude_observation, longitude_observation,
-          date_observation, statut_validation,
-          niveau_certitude, direction_deplacement,
-          source_signalement, created_at, updated_at,
-          dossier:id_dossier ( numero_dossier, personne:id_personne ( nom_complet ) )
-        `)
-        .eq('id', signalementId)
-        .single();
-      if (error) throw error;
-      setSignalement(data);
-
-      // Photos
-      const { data: photosData } = await supabase
-        .from('photo')
-        .select('id, url_cloudinary, url_thumbnail, type_photo')
-        .eq('id_signalement', signalementId);
-      setPhotos(photosData || []);
-    } catch (err) {
-      console.error('Erreur signalement:', err);
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=cm&limit=10`
+      );
+      const data = await response.json();
+      setSearchResults(data);
+      setShowResults(true);
+    } catch (error) {
+      console.error('Erreur recherche:', error);
     } finally {
       setLoading(false);
     }
-  }, [signalementId]);
-
-  useEffect(() => { fetchSignalement(); }, [fetchSignalement]);
-
-  const getStatutStyle = (s: string) => {
-    const map: Record<string, { bg: string; text: string; label: string }> = {
-      en_attente:      { bg: '#fee2e2', text: '#991b1b', label: 'Rejeté'         },
-      en_verification: { bg: '#fef3c7', text: '#92400e', label: 'En vérification' },
-      valide:          { bg: '#f0fdf4', text: '#166534', label: 'Validé'          },
-      invalide:        { bg: '#fee2e2', text: '#991b1b', label: 'Invalide'        },
-    };
-    return map[s] || { bg: '#f1f5f9', text: '#64748b', label: s?.toUpperCase() || '—' };
   };
 
-  if (!signalementId || loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingFull}>
-          <ActivityIndicator size="large" color="#1d4ed8" />
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const selectLocation = (item: any) => {
+    const lat = parseFloat(item.lat);
+    const lng = parseFloat(item.lon);
+    setLatitude(lat);
+    setLongitude(lng);
+    setLieuObservation(item.display_name.split(',')[0]);
+    setSearchQuery(item.display_name.split(',')[0]);
+    setShowResults(false);
+    setMapKey(prev => prev + 1);
+  };
 
-  const ss = getStatutStyle(signalement?.statut_validation || '');
-  const numCourt = '#' + (signalement?.numero_signalement || signalement?.id || '').toString().slice(-8);
+  // Géolocalisation
+  const handleGeolocate = () => {
+    setLoading(true);
+    navigation.geolocation.getCurrentPosition(
+      (position: { coords: { latitude: React.SetStateAction<number | null>; longitude: React.SetStateAction<number | null>; }; }) => {
+        setLatitude(position.coords.latitude);
+        setLongitude(position.coords.longitude);
+        setMapKey(prev => prev + 1);
+        setLoading(false);
+      },
+      (error: any) => {
+        console.error('Erreur géoloc:', error);
+        setLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  };
+
+  // Gestion des messages de la carte
+  const handleMapMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.lat && data.lng) {
+        setLatitude(data.lat);
+        setLongitude(data.lng);
+      }
+    } catch (e) {}
+  };
+
+  // Upload photos
+  const handlePickPhotos = async () => {
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 5 });
+    if (result.assets) {
+      const newPhotos = result.assets.map(asset => ({
+        uri: asset.uri,
+        name: asset.fileName || `photo_${Date.now()}.jpg`,
+        type: asset.type || 'image/jpeg',
+      }));
+      setPhotos([...photos, ...newPhotos]);
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos(photos.filter((_, i) => i !== index));
+  };
+
+  // Soumission
+  const handleSubmit = async () => {
+    if (!description.trim()) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const dateTimeISO = dateObservation && heureObservation
+        ? new Date(`${dateObservation.split('/').reverse().join('-')}T${heureObservation}`).toISOString()
+        : new Date().toISOString();
+
+      const { data: signalement, error } = await supabase
+        .from('signalement')
+        .insert({
+          description: description.trim(),
+          lieu_observation: lieuObservation.trim() || null,
+          ville_observation: ville.trim() || null,
+          region_observation: region.trim() || null,
+          latitude_observation: latitude,
+          longitude_observation: longitude,
+          date_observation: dateTimeISO,
+          niveau_certitude: niveauCertitude,
+          contexte_observation: contexte.trim() || null,
+          direction_deplacement: directionDeplacement.trim() || null,
+          statut_validation: 'en_attente',
+          source_signalement: 'application_mobile',
+          id_utilisateur: user.id,
+          id_dossier: dossierId,
+          temoin_anonyme: true,
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      // Upload des photos
+      for (const [idx, photo] of photos.entries()) {
+        try {
+          const ext = photo.name.split('.').pop() ?? 'jpg';
+          const fileName = `signalements/${signalement.id}/${Date.now()}_${idx}.${ext}`;
+          const blob = await (await fetch(photo.uri)).blob();
+          await supabase.storage.from('photos').upload(fileName, blob, { contentType: photo.type });
+          const { data: urlData } = supabase.storage.from('photos').getPublicUrl(fileName);
+          await supabase.from('photo').insert({
+            url_cloudinary: urlData.publicUrl,
+            id_signalement: signalement.id,
+            uploadee_par: user.id,
+            approuvee: false,
+            visible_public: false,
+            type_photo: 'signalement',
+            est_principale: idx === 0,
+          });
+        } catch (e) { console.warn(e); }
+      }
+
+      navigation.goBack();
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    const now = new Date();
+    setDateObservation(now.toLocaleDateString('fr-FR'));
+    setHeureObservation(now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+  }, []);
+
+  useEffect(() => {
+    const delay = setTimeout(() => {
+      if (searchQuery) searchLocation(searchQuery);
+      else {
+        setSearchResults([]);
+        setShowResults(false);
+      }
+    }, 500);
+    return () => clearTimeout(delay);
+  }, [searchQuery]);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
-      {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.btnRetour} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={16} color="#64748b" />
-          <Text style={styles.btnRetourText}>Retour</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color="#0b1c30" />
         </TouchableOpacity>
-        <View style={[styles.statutBadge, { backgroundColor: ss.bg }]}>
-          <Ionicons name="close-circle-outline" size={14} color={ss.text} />
-          <Text style={[styles.statutBadgeText, { color: ss.text }]}>{ss.label}</Text>
-        </View>
+        <Text style={styles.headerTitle}>Retrouvons-Les</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* TITRE */}
-        <Text style={styles.titre}>Signalement {numCourt}</Text>
-        <View style={styles.dateRow}>
-          <Ionicons name="time-outline" size={13} color="#94a3b8" />
-          <Text style={styles.dateText}>
-            createdAt: {signalement?.created_at
-              ? new Date(signalement.created_at).toLocaleDateString('fr-FR', {
-                  day: '2-digit', month: 'long', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit'
-                })
-              : '—'}
-          </Text>
-        </View>
-
-        {/* LOCALISATION + DATE */}
-        <View style={styles.grid}>
-          <View style={styles.infoCard}>
-            <View style={styles.infoCardHeader}>
-              <Ionicons name="location-outline" size={16} color="#1d4ed8" />
-              <Text style={styles.infoCardTitle}>location</Text>
-            </View>
-            <InfoRow label="location" value={signalement?.lieu_observation || '—'} />
-            <InfoRow label="Ville"    value={signalement?.ville_observation || '—'} />
-            <InfoRow label="Région"   value={signalement?.region_observation || '—'} />
-            <InfoRow label="country"  value={signalement?.pays_observation || 'Cameroun'} />
-            {signalement?.latitude_observation && signalement?.longitude_observation && (
-              <Text style={styles.gps}>
-                GPS: {parseFloat(signalement.latitude_observation).toFixed(5)}, {parseFloat(signalement.longitude_observation).toFixed(5)}
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoCardHeader}>
-              <Ionicons name="calendar-outline" size={16} color="#1d4ed8" />
-              <Text style={styles.infoCardTitle}>Date d'observation</Text>
-            </View>
-            <Text style={styles.dateObservation}>
-              {signalement?.date_observation
-                ? new Date(signalement.date_observation).toLocaleDateString('fr-FR', {
-                    day: '2-digit', month: 'long', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                  })
-                : '—'}
-            </Text>
-            {signalement?.niveau_certitude && (
-              <View style={styles.certitudeRow}>
-                <Text style={styles.certitudeLabel}>Niveau de certitude: </Text>
-                <Text style={styles.certitudeValue}>
-                  {signalement.niveau_certitude.charAt(0).toUpperCase() + signalement.niveau_certitude.slice(1)}
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
         {/* DESCRIPTION */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>description</Text>
-          <Text style={styles.sectionValue}>
-            {signalement?.description || 'Aucune description'}
-          </Text>
+        <View style={styles.card}>
+          <Text style={styles.label}>Description *</Text>
+          <TextInput
+            style={styles.textArea}
+            placeholder="Décrivez ce que vous avez observé..."
+            placeholderTextColor="#94a3b8"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={5}
+          />
         </View>
 
-        {/* DIRECTION */}
-        {signalement?.direction_deplacement && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionLabel}>direction</Text>
-            <Text style={styles.sectionValue}>{signalement.direction_deplacement}</Text>
+        {/* DATE ET HEURE */}
+        <View style={styles.rowContainer}>
+          <View style={[styles.halfCard, { marginRight: 8 }]}>
+            <Text style={styles.label}>Date d'observation *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="JJ/MM/AAAA"
+              value={dateObservation}
+              onChangeText={setDateObservation}
+            />
           </View>
-        )}
+          <View style={[styles.halfCard, { marginLeft: 8 }]}>
+            <Text style={styles.label}>Heure d'observation</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="HH:MM"
+              value={heureObservation}
+              onChangeText={setHeureObservation}
+            />
+          </View>
+        </View>
 
-        {/* PHOTOS */}
-        <View style={styles.sectionCard}>
-          <View style={styles.photosHeader}>
-            <Ionicons name="images-outline" size={16} color="#1d4ed8" />
-            <Text style={styles.sectionLabel}>photos ({photos.length})</Text>
+        {/* LOCALISATION AVEC CARTE */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Localisation *</Text>
+          <Text style={styles.labelNote}>
+            Recherchez un lieu, utilisez votre position ou cliquez sur la carte pour définir l'emplacement.
+          </Text>
+
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={18} color="#94a3b8" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Rechercher sur la carte..."
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            <TouchableOpacity onPress={handleGeolocate}>
+              <Ionicons name="locate-outline" size={20} color="#b45f06" />
+            </TouchableOpacity>
           </View>
-          {photos.length === 0 ? (
-            <Text style={styles.noPhotos}>Aucune photo</Text>
-          ) : (
-            <View style={styles.photosGrid}>
-              {photos.map((p, i) => (
-                <Image
-                  key={i}
-                  source={{ uri: p.url_thumbnail || p.url_cloudinary }}
-                  style={styles.photoThumb}
-                  resizeMode="cover"
-                />
+
+          {showResults && searchResults.length > 0 && (
+            <View style={styles.searchResults}>
+              {searchResults.map((item, idx) => (
+                <TouchableOpacity key={idx} style={styles.resultItem} onPress={() => selectLocation(item)}>
+                  <Ionicons name="location-outline" size={16} color="#b45f06" />
+                  <Text style={styles.resultText} numberOfLines={1}>
+                    {item.display_name.split(',')[0]}, {item.display_name.split(',')[1]}
+                  </Text>
+                </TouchableOpacity>
               ))}
             </View>
           )}
+
+          <View style={styles.mapContainer}>
+            <WebView
+              key={mapKey}
+              originWhitelist={['*']}
+              source={{ html: buildMapHTML(latitude, longitude) }}
+              style={{ flex: 1 }}
+              javaScriptEnabled
+              onMessage={handleMapMessage}
+            />
+          </View>
+
+          {latitude && longitude && (
+            <Text style={styles.coordsText}>
+              📍 {latitude.toFixed(5)}, {longitude.toFixed(5)}
+            </Text>
+          )}
         </View>
 
-        {/* MÉTADONNÉES */}
-        <View style={styles.sectionCard}>
-          {signalement?.source_signalement && (
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>source: </Text>
-              <Text style={styles.metaValue}>{signalement.source_signalement}</Text>
-            </View>
+        {/* LIEU PRÉCIS */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Lieu de l'observation</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Lieu précis (quartier, rue...)"
+            placeholderTextColor="#94a3b8"
+            value={lieuObservation}
+            onChangeText={setLieuObservation}
+          />
+        </View>
+
+        {/* VILLE ET RÉGION */}
+        <View style={styles.rowContainer}>
+          <View style={[styles.halfCard, { marginRight: 8 }]}>
+            <Text style={styles.label}>Ville</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Yaoundé, Douala..."
+              placeholderTextColor="#94a3b8"
+              value={ville}
+              onChangeText={setVille}
+            />
+          </View>
+          <View style={[styles.halfCard, { marginLeft: 8 }]}>
+            <Text style={styles.label}>Région</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Centre, Littoral..."
+              placeholderTextColor="#94a3b8"
+              value={region}
+              onChangeText={setRegion}
+            />
+          </View>
+        </View>
+
+        {/* NIVEAU DE CERTITUDE */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Niveau de certitude</Text>
+          <View style={styles.optionsRow}>
+            {certitudeOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.optionChip, niveauCertitude === opt.value && styles.optionChipActive]}
+                onPress={() => setNiveauCertitude(opt.value)}
+              >
+                <Text style={[styles.optionChipText, niveauCertitude === opt.value && styles.optionChipTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* CONTEXTE */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Contexte</Text>
+          <TextInput
+            style={styles.textAreaSmall}
+            placeholder="Contexte de l'observation"
+            placeholderTextColor="#94a3b8"
+            value={contexte}
+            onChangeText={setContexte}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+
+        {/* DIRECTION DE DÉPLACEMENT */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Direction de déplacement</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Direction prise par la personne"
+            placeholderTextColor="#94a3b8"
+            value={directionDeplacement}
+            onChangeText={setDirectionDeplacement}
+          />
+        </View>
+
+        {/* PHOTOS */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Photos</Text>
+          <TouchableOpacity style={styles.uploadZone} onPress={handlePickPhotos}>
+            <Ionicons name="camera-outline" size={32} color="#94a3b8" />
+            <Text style={styles.uploadText}>Cliquez pour ajouter des fichiers ou glissez-les ici</Text>
+            <Text style={styles.uploadHint}>JPG, PNG, WEBP - Max 10MB</Text>
+          </TouchableOpacity>
+          
+          {photos.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosPreview}>
+              {photos.map((photo, i) => (
+                <View key={i} style={styles.photoItem}>
+                  <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
+                  <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(i)}>
+                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
           )}
-          {signalement?.updated_at && (
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>updatedAt: </Text>
-              <Text style={styles.metaValue}>
-                {new Date(signalement.updated_at).toLocaleDateString('fr-FR', {
-                  day: '2-digit', month: 'long', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit'
-                })}
-              </Text>
-            </View>
-          )}
-          {signalement?.dossier && (
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Dossier: </Text>
-              <Text style={styles.metaValue}>{signalement.dossier.numero_dossier}</Text>
-            </View>
-          )}
+        </View>
+
+        {/* BOUTONS */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.cancelBtnText}>Annuler</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.submitBtnText}>Soumettre</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
       </ScrollView>
@@ -214,47 +490,53 @@ export default function VoirSignalement({ navigation, route }: any) {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}: </Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container:          { flex: 1, backgroundColor: '#f8fafc' },
-  loadingFull:        { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header:             { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  btnRetour:          { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  btnRetourText:      { fontSize: 13, color: '#64748b', fontWeight: '600' },
-  statutBadge:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  statutBadgeText:    { fontSize: 12, fontWeight: 'bold' },
-  scrollContent:      { padding: 16, paddingBottom: 30 },
-  titre:              { fontSize: 22, fontWeight: 'bold', color: '#1e293b', marginBottom: 6 },
-  dateRow:            { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 20 },
-  dateText:           { fontSize: 12, color: '#94a3b8' },
-  grid:               { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  infoCard:           { flex: 1, backgroundColor: '#FFF', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0' },
-  infoCardHeader:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  infoCardTitle:      { fontSize: 13, fontWeight: 'bold', color: '#1e293b' },
-  infoRow:            { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
-  infoLabel:          { fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
-  infoValue:          { fontSize: 12, color: '#475569', flex: 1 },
-  gps:                { fontSize: 10, color: '#94a3b8', marginTop: 6 },
-  dateObservation:    { fontSize: 13, color: '#1e293b', fontWeight: '600', marginBottom: 8 },
-  certitudeRow:       { flexDirection: 'row', flexWrap: 'wrap' },
-  certitudeLabel:     { fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
-  certitudeValue:     { fontSize: 12, color: '#475569' },
-  sectionCard:        { backgroundColor: '#FFF', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 12 },
-  sectionLabel:       { fontSize: 13, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
-  sectionValue:       { fontSize: 13, color: '#64748b', lineHeight: 18 },
-  photosHeader:       { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  noPhotos:           { fontSize: 12, color: '#94a3b8' },
-  photosGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  photoThumb:         { width: 100, height: 100, borderRadius: 8, backgroundColor: '#f1f5f9' },
-  metaRow:            { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
-  metaLabel:          { fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
-  metaValue:          { fontSize: 12, color: '#64748b', flex: 1 },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  backBtn: { width: 40, height: 40, justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0b1c30' },
+  scrollContent: { padding: 16, paddingBottom: 40 },
+
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  label: { fontSize: 14, fontWeight: '700', color: '#0b1c30', marginBottom: 8 },
+  labelNote: { fontSize: 12, color: '#64748b', marginBottom: 12 },
+  
+  textArea: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 14, color: '#1e293b', textAlignVertical: 'top', minHeight: 100, borderWidth: 1, borderColor: '#e2e8f0' },
+  textAreaSmall: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 14, color: '#1e293b', textAlignVertical: 'top', minHeight: 80, borderWidth: 1, borderColor: '#e2e8f0' },
+  input: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 14, color: '#1e293b', borderWidth: 1, borderColor: '#e2e8f0' },
+
+  rowContainer: { flexDirection: 'row', marginBottom: 16, gap: 16 },
+  halfCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 12, gap: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: '#0b1c30', padding: 0 },
+
+  searchResults: { position: 'absolute', top: 100, left: 16, right: 16, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', maxHeight: 200, zIndex: 10, elevation: 5 },
+  resultItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  resultText: { flex: 1, fontSize: 13, color: '#1e293b' },
+
+  mapContainer: { height: 200, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 8 },
+  coordsText: { fontSize: 11, color: '#64748b', textAlign: 'center', marginTop: 8 },
+
+  optionsRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  optionChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  optionChipActive: { backgroundColor: '#b45f06', borderColor: '#b45f06' },
+  optionChipText: { fontSize: 13, color: '#64748b' },
+  optionChipTextActive: { color: '#fff', fontWeight: '600' },
+
+  uploadZone: { borderWidth: 1.5, borderColor: '#cbd5e1', borderStyle: 'dashed', borderRadius: 10, padding: 20, alignItems: 'center', gap: 8, backgroundColor: '#f8fafc' },
+  uploadText: { fontSize: 13, color: '#64748b' },
+  uploadHint: { fontSize: 11, color: '#94a3b8' },
+
+  photosPreview: { flexDirection: 'row', marginTop: 12, gap: 10 },
+  photoItem: { position: 'relative' },
+  photoThumb: { width: 80, height: 80, borderRadius: 8 },
+  removePhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#fff', borderRadius: 10 },
+
+  buttonRow: { flexDirection: 'row', gap: 12, marginTop: 16, marginBottom: 20 },
+  cancelBtn: { flex: 1, backgroundColor: '#f1f5f9', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  submitBtn: { flex: 1, backgroundColor: '#b45f06', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  submitBtnDisabled: { opacity: 0.7 },
+  submitBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

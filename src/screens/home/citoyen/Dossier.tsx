@@ -310,7 +310,6 @@ export default function Dossier({ navigation }: any) {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [erreur, setErreur]         = useState<string | null>(null);
-  const [showFiltres, setShowFiltres] = useState(false);
 
   const filtres: { key: Statut; label: string }[] = [
     { key: 'tous',              label: 'Tous'            },
@@ -497,91 +496,6 @@ export default function Dossier({ navigation }: any) {
         )}
       </View>
 
-      {/* BOUTON FILTRES */}
-      <TouchableOpacity 
-        style={styles.filtresToggle} 
-        onPress={() => setShowFiltres(!showFiltres)}
-      >
-        <Ionicons name="options-outline" size={18} color="#b45f06" />
-        <Text style={styles.filtresToggleText}>Filtres avancés</Text>
-        <Ionicons name={showFiltres ? "chevron-up" : "chevron-down"} size={16} color="#b45f06" />
-      </TouchableOpacity>
-
-      {/* FILTRES AVANCÉS */}
-      {showFiltres && (
-        <View style={styles.filtresAvances}>
-          <View style={styles.filtreRow}>
-            <View style={styles.filtreGroup}>
-              <Text style={styles.filtreLabel}>Âge min</Text>
-              <TextInput
-                style={styles.filtreInput}
-                placeholder="0"
-                placeholderTextColor="#94a3b8"
-                value={ageMin}
-                onChangeText={setAgeMin}
-                keyboardType="numeric"
-              />
-            </View>
-            <View style={styles.filtreGroup}>
-              <Text style={styles.filtreLabel}>Âge max</Text>
-              <TextInput
-                style={styles.filtreInput}
-                placeholder="100"
-                placeholderTextColor="#94a3b8"
-                value={ageMax}
-                onChangeText={setAgeMax}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-
-          <View style={styles.filtreGroup}>
-            <Text style={styles.filtreLabel}>Lieu</Text>
-            <TextInput
-              style={styles.filtreInputFull}
-              placeholder="Ville, quartier, rue..."
-              placeholderTextColor="#94a3b8"
-              value={lieu}
-              onChangeText={setLieu}
-            />
-          </View>
-
-          <View style={styles.filtreGroup}>
-            <Text style={styles.filtreLabel}>Date de disparition</Text>
-            <TextInput
-              style={styles.filtreInputFull}
-              placeholder="jj/mm/aaaa"
-              placeholderTextColor="#94a3b8"
-              value={date}
-              onChangeText={setDate}
-            />
-          </View>
-
-          <View style={styles.filtreActions}>
-            <TouchableOpacity 
-              style={styles.btnAppliquer}
-              onPress={fetchDossiers}
-            >
-              <Text style={styles.btnAppliquerText}>Appliquer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.btnReset}
-              onPress={() => {
-                setAgeMin('');
-                setAgeMax('');
-                setLieu('');
-                setDate('');
-                setRecherche('');
-                setFiltre('tous');
-                fetchDossiers();
-              }}
-            >
-              <Text style={styles.btnResetText}>Réinitialiser</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
       {/* FILTRES STATUT */}
       <ScrollView
         horizontal
@@ -676,110 +590,18 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, color: '#0b1c30', padding: 0 },
 
-  filtresToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingVertical: 8,
-  },
-  filtresToggleText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#b45f06',
-  },
-
-  filtresAvances: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  filtreRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  filtreGroup: {
-    flex: 1,
-  },
-  filtreLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  filtreInput: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: '#0b1c30',
-  },
-  filtreInputFull: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: '#0b1c30',
-  },
-  filtreActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-  btnAppliquer: {
-    flex: 1,
-    backgroundColor: '#b45f06',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  btnAppliquerText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  btnReset: {
-    flex: 1,
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  btnResetText: {
-    color: '#64748b',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-
-  filtresStatutScroll: { maxHeight: 48, marginBottom: 16 },
-  filtresStatutContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
+  filtresStatutScroll: { marginBottom: 16 },
+  filtresStatutContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center', paddingVertical: 4 },
   statutBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
   },
   statutBtnActive: { backgroundColor: '#0b1c30', borderColor: '#0b1c30' },
-  statutBtnText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  statutBtnText: { fontSize: 12, fontWeight: '600', color: '#475569' },
   statutBtnTextActive: { color: '#fff' },
 
   liste: { padding: 16, paddingBottom: 50 },

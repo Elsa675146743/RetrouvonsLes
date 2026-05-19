@@ -138,7 +138,7 @@ const Login = ({ navigation }: any) => {
               leftIconName="lock-outline"
             />
 
-            <TouchableOpacity style={styles.forgotPass}>
+            <TouchableOpacity style={styles.forgotPass} onPress={() => navigation.navigate('MotDePasseOublie')}>
               <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
             </TouchableOpacity>
 
