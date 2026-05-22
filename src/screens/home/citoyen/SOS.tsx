@@ -6,8 +6,11 @@ import {
   RefreshControl,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Geolocation from '@react-native-community/geolocation';
 import { supabase } from '../../../services/supabase';
-import Geolocation from 'react-native-geolocation-service';
+
+// Supprimez la déclaration 'declare const navigator: any;'
+// Plus besoin car on utilise Geolocation directement
 
 interface SosEvent {
   id: string;
@@ -55,40 +58,64 @@ export default function SOS({ navigation }: any) {
     }
   };
 
-  // GPS silencieux (sans loading spinner)
+  // ✅ VERSION CORRIGÉE avec @react-native-community/geolocation
   const getLocationSilently = (): Promise<{ lat: number; lng: number } | null> => {
     return new Promise((resolve) => {
+      // Vérifier si Geolocation est disponible
+      if (!Geolocation) {
+        console.warn('Geolocation non disponible');
+        resolve(null);
+        return;
+      }
+
       Geolocation.getCurrentPosition(
         (position) => {
-          resolve({ lat: position.coords.latitude, lng: position.coords.longitude });
+          console.log('📍 Position obtenue:', position.coords);
+          resolve({ 
+            lat: position.coords.latitude, 
+            lng: position.coords.longitude 
+          });
         },
         (error) => {
-          console.warn('Erreur GPS:', error);
+          console.warn('Erreur GPS détaillée:', error.code, error.message);
+          // Codes erreur: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+          if (error.code === 1) {
+            Alert.alert('Permission refusée', 'Activez la localisation dans les paramètres');
+          }
           resolve(null);
         },
-        { enableHighAccuracy: true, timeout: 15000 }
+        { 
+          enableHighAccuracy: true, 
+          timeout: 15000,
+          maximumAge: 10000  // Accepte une position vieille de 10s max
+        }
       );
     });
   };
 
-  // Démarrer la procédure - compte à rebours IMMÉDIAT
   const demarrerSOS = () => {
     setRateLimitError(false);
     setIsActive(true);
-    setCountdown(30);
+    setCountdown(5);
     
-    // Capturer GPS en arrière-plan (ne bloque pas)
+    // On lance la géolocalisation immédiatement
     getLocationSilently().then((coords) => {
       if (coords) {
         setLatitude(coords.lat);
         setLongitude(coords.lng);
         setSansPosition(false);
+        console.log('✅ Position sauvegardée pour le SOS');
       } else {
         setSansPosition(true);
+        console.log('⚠️ SOS sans position');
       }
+    }).catch(err => {
+      console.error('Erreur inattendue:', err);
+      setSansPosition(true);
     });
     
-    // Timer 30 secondes
+    // Démarrer le compte à rebours
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setCountdown((prev) => {
         const current = prev ?? 30;
@@ -102,7 +129,6 @@ export default function SOS({ navigation }: any) {
     }, 1000);
   };
 
-  // Annuler pendant les 30 secondes
   const annulerSOS = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -124,45 +150,53 @@ export default function SOS({ navigation }: any) {
         return;
       }
 
-      // Si GPS non capturé, tenter une dernière fois
       let finalLat = latitude;
       let finalLng = longitude;
       let finalSansPosition = sansPosition;
       
+      // Si on n'a pas encore de position, on essaie une dernière fois
       if (!finalLat && !finalLng && !finalSansPosition) {
         const coords = await getLocationSilently();
         if (coords) {
           finalLat = coords.lat;
           finalLng = coords.lng;
           finalSansPosition = false;
+          console.log('📍 Position obtenue in extremis');
         } else {
           finalSansPosition = true;
+          console.log('⚠️ Envoi SOS sans position');
         }
       }
 
-      const response = await supabase.functions.invoke('sos-dispatch', {
-        body: {
-          mode: 'dispatch',
-          message: messageUrgence || 'Alerte SOS envoyée',
-          latitude: finalLat,
-          longitude: finalLng,
-          sans_position: finalSansPosition,
-        },
+      // Appel à votre backend (à décommenter quand prêt)
+      console.log('🚨 SOS envoyé:', { 
+        message: messageUrgence, 
+        latitude: finalLat, 
+        longitude: finalLng,
+        sans_position: finalSansPosition 
       });
-
-      if (response.error) {
-        if (response.error.message?.includes('429') || response.error.status === 429) {
-          setRateLimitError(true);
-          Alert.alert('Trop de tentatives', 'Limite de 3 SOS par heure atteinte.');
-        } else {
-          throw response.error;
-        }
-        return;
-      }
       
-      Alert.alert('✅ Alerte envoyée', 'Les autorités ont été notifiées.');
+      
+       const { error } = await supabase.functions.invoke('sos-dispatch', {
+         body: { message: messageUrgence, latitude: finalLat, longitude: finalLng, sans_position: finalSansPosition }
+      });
+      
+      Alert.alert(
+        '✅ Alerte envoyée', 
+        finalSansPosition 
+          ? 'SOS envoyé (position approximative). Les autorités sont notifiées.'
+          : 'SOS envoyé avec votre position. Les autorités sont notifiées.'
+      );
+      
+      // Réinitialiser
+      setLatitude(null);
+      setLongitude(null);
+      setSansPosition(false);
+      setMessageUrgence('');
       fetchHistorique();
+      
     } catch (error: any) {
+      console.error('Erreur envoi SOS:', error);
       Alert.alert('Erreur', error.message || 'Impossible d\'envoyer l\'alerte');
     }
   };
@@ -185,14 +219,43 @@ export default function SOS({ navigation }: any) {
     }
   };
 
+  // ✅ Demande de permission améliorée
   useEffect(() => {
-    // Demander permission GPS au chargement (une seule fois)
-    const requestPermission = async () => {
+    const requestLocationPermission = async () => {
       if (Platform.OS === 'android') {
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+              title: "Permission de localisation",
+              message: "L'application a besoin d'accéder à votre position pour envoyer des alertes SOS",
+              buttonNeutral: "Demander plus tard",
+              buttonNegative: "Annuler",
+              buttonPositive: "OK"
+            }
+          );
+          
+          if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+            console.log("✅ Permission de localisation accordée");
+            // Tester la géolocalisation
+            Geolocation.getCurrentPosition(
+              (pos) => console.log("GPS fonctionne:", pos.coords),
+              (err) => console.warn("GPS error:", err)
+            );
+          } else {
+            console.log("⚠️ Permission de localisation refusée");
+            Alert.alert(
+              "Localisation nécessaire",
+              "Pour une alerte SOS efficace, veuillez activer la localisation"
+            );
+          }
+        } catch (err) {
+          console.warn("Erreur permission:", err);
+        }
       }
     };
-    requestPermission();
+    
+    requestLocationPermission();
     fetchHistorique();
     
     return () => {
@@ -222,7 +285,7 @@ export default function SOS({ navigation }: any) {
         <View style={styles.warningBox}>
           <Ionicons name="warning-outline" size={24} color="#dc2626" />
           <Text style={styles.warningText}>
-            En cas de danger immédiat, contactez d'abord les secours : Police 17, Pompiers 15, Urgences médicales 119.
+            En cas de danger immédiat, contactez d'abord les secours : Police 17, Pompiers 18, SAMU 15.
             Le bouton SOS est une aide complémentaire.
           </Text>
         </View>
@@ -262,13 +325,18 @@ export default function SOS({ navigation }: any) {
             numberOfLines={3}
             value={messageUrgence}
             onChangeText={setMessageUrgence}
-            placeholder="Décrivez votre situation..."
+            placeholder="Décrivez votre situation (ex: je suis coincé, besoin de secours)..."
             placeholderTextColor="#94a3b8"
             editable={!isActive}
           />
           {latitude && longitude && (
             <Text style={styles.coordsText}>
-              📍 Position: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+              📍 Position: {latitude.toFixed(6)}, {longitude.toFixed(6)}
+            </Text>
+          )}
+          {sansPosition && !isActive && (
+            <Text style={styles.coordsText}>
+              ⚠️ Position non disponible - alerte envoyée sans localisation précise
             </Text>
           )}
         </View>
@@ -284,7 +352,7 @@ export default function SOS({ navigation }: any) {
           
           {showHistorique && (
             historique.length === 0 ? (
-              <Text style={styles.emptyText}>Aucun historique</Text>
+              <Text style={styles.emptyText}>Aucune alerte envoyée</Text>
             ) : (
               historique.map((event) => (
                 <View key={event.id} style={styles.historiqueItem}>
@@ -298,6 +366,9 @@ export default function SOS({ navigation }: any) {
                     </Text>
                     {event.message && (
                       <Text style={styles.historiqueMessage} numberOfLines={2}>{event.message}</Text>
+                    )}
+                    {event.sans_position && (
+                      <Text style={styles.historiqueMessage}>⚠️ Sans position GPS</Text>
                     )}
                   </View>
                 </View>

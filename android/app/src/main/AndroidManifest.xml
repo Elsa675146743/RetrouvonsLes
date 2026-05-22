@@ -38,32 +38,22 @@
             <data android:scheme="retrouvonsles" android:host="dossier" />
         </intent-filter>
         
-        <!-- ✅ DEEP LINK : lien /dossier/ID partagé sur WhatsApp/Facebook -->
+        <!-- ✅ DEEP LINK : nouveau domaine te-sea.com -->
         <intent-filter android:autoVerify="true">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https"
-                  android:host="retrouvonsles.vercel.app"
+                  android:host="retrouvonsles.te-sea.com"
                   android:pathPrefix="/dossier" />
         </intent-filter>
 
-        <!-- ✅ DEEP LINK : lien /disparition/ID (ancien format) -->
+        <!-- ✅ DEEP LINK : ancien domaine vercel.app -->
         <intent-filter android:autoVerify="true">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https"
-                  android:host="retrouvonsles.vercel.app"
-                  android:pathPrefix="/disparition" />
-        </intent-filter>
-
-        <!-- ✅ DEEP LINK : HTTP (au cas où le lien n'est pas HTTPS) -->
-        <intent-filter android:autoVerify="true">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="http"
                   android:host="retrouvonsles.vercel.app"
                   android:pathPrefix="/dossier" />
         </intent-filter>

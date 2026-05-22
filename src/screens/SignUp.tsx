@@ -1,56 +1,44 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet, View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity
+  StyleSheet, View, Text, KeyboardAvoidingView,
+  Platform, ScrollView, Alert, TouchableOpacity
 } from 'react-native';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { authService } from '../services/authService';
-import { UserRole } from '../types/auth';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const SignUp = ({ navigation }: any) => {
-  const [email, setEmail] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]                   = useState('');
+  const [nom, setNom]                       = useState('');
+  const [prenom, setPrenom]                 = useState('');
+  const [password, setPassword]             = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]               = useState(false);
 
   const handleSignUp = async () => {
-    // Validation
-    if (!email || !password || !neighborhood || !confirmPassword) {
+    if (!email || !nom || !prenom || !password || !confirmPassword) {
       Alert.alert("Erreur", "Veuillez remplir tous les champs.");
       return;
     }
-
-    console.log('password:', JSON.stringify(password));
-    console.log('confirmPassword:', JSON.stringify(confirmPassword));
     if (password !== confirmPassword) {
       Alert.alert("Erreur", "Les mots de passe ne correspondent pas.");
       return;
     }
+    if (password.length < 6) {
+      Alert.alert("Erreur", "Le mot de passe doit contenir au moins 6 caractères.");
+      return;
+    }
 
     setLoading(true);
-
     try {
-      // Appel réel au service d'authentification
       await authService.register(email.trim(), password, {
-        nom: "",
-        prenom: "",
-        quartier: neighborhood
+        nom: nom.trim(),
+        prenom: prenom.trim(),
       });
-
-      console.log("Inscription réussie pour:", email);
-
-
-      console.log("Inscription réussie pour:", email);
-
-      // Redirection immédiate sans message
       navigation.replace('Login');
-
-
     } catch (error: any) {
-      console.log("Erreur inscription:", error.message);
-      Alert.alert("Erreur", "Cet e-mail est déjà utilisé.");
+      Alert.alert("Erreur", error.message || "Cet e-mail est déjà utilisé.");
     } finally {
       setLoading(false);
     }
@@ -64,8 +52,12 @@ const SignUp = ({ navigation }: any) => {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.contentBox}>
           <View style={styles.header}>
-            <Text style={styles.title}>Rejoignez la <Text style={{ color: '#4FCCAE' }}>Solidarité</Text></Text>
-            <Text style={styles.subtitle}>Créez votre compte citoyen pour aider la communauté.</Text>
+            <Text style={styles.title}>
+              Rejoignez la <Text style={{ color: '#4FCCAE' }}>Solidarité</Text>
+            </Text>
+            <Text style={styles.subtitle}>
+              Créez votre compte citoyen pour aider la communauté.
+            </Text>
           </View>
 
           <View style={styles.form}>
@@ -78,25 +70,31 @@ const SignUp = ({ navigation }: any) => {
               autoCapitalize="none"
               leftIconName="email-outline"
             />
-
             <Input
-              label="Quartier"
-              placeholder="Ex: Bastos, Akwa..."
-              value={neighborhood}
-              onChangeText={setNeighborhood}
-              leftIconName="map-marker-outline"
+              label="Nom"
+              placeholder="Votre nom de famille"
+              value={nom}
+              onChangeText={setNom}
+              autoCapitalize="words"
+              leftIconName="account-outline"
             />
-
+            <Input
+              label="Prénom"
+              placeholder="Votre prénom"
+              value={prenom}
+              onChangeText={setPrenom}
+              autoCapitalize="words"
+              leftIconName="account-outline"
+            />
             <Input
               label="Mot de passe"
-              placeholder="Minimum 8 caractères"
+              placeholder="Minimum 6 caractères"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               isPassword
               leftIconName="lock-outline"
             />
-
             <Input
               label="Confirmer le mot de passe"
               placeholder="Répétez le mot de passe"
@@ -149,37 +147,24 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   scrollContainer: { padding: 25, flexGrow: 1, justifyContent: 'center' },
   contentBox: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#FFF',
-    borderRadius: 20,
-    padding: 24,
-    backgroundColor: '#FFF',
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 4,
+    width: '100%', borderWidth: 1, borderColor: '#FFF',
+    borderRadius: 20, padding: 24, backgroundColor: '#FFF',
+    shadowOpacity: 0.08, shadowRadius: 2, elevation: 4,
   },
   header: { marginBottom: 30 },
   title: { fontSize: 26, fontWeight: 'bold', color: '#1A1A1A' },
   subtitle: { fontSize: 15, color: '#666', marginTop: 8 },
   form: { width: '100%' },
-  row: { flexDirection: 'row', marginBottom: 5 },
   dividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 25 },
   line: { flex: 1, height: 1, backgroundColor: '#E0E0E0' },
   dividerText: { marginHorizontal: 10, color: '#888' },
   socialContainer: { flexDirection: 'row', justifyContent: 'space-between' },
   socialButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#E0E0E0',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginHorizontal: 5
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    borderColor: '#E0E0E0', borderWidth: 1, borderRadius: 10,
+    padding: 12, marginHorizontal: 5,
   },
-  socialText: { marginLeft: 10, fontWeight: 'bold', color: '#333' }
+  socialText: { marginLeft: 10, fontWeight: 'bold', color: '#333' },
 });
 
 export default SignUp;

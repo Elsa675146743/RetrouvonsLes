@@ -29,14 +29,11 @@ interface Dossier {
   nombre_signalements: number;
 }
 
-// ─── HEADER avec style image ───
+// ─── HEADER ───
 function Header({ navigation }: any) {
   return (
     <View style={hS.wrapper}>
       <Text style={hS.title}>Centre Opérationnel de Recherche</Text>
-      <Text style={hS.subtitle}>
-        Accédez à l'annuaire centralisé des personnes disparues. Chaque seconde compte dans nos opérations de recherche.
-      </Text>
     </View>
   );
 }
@@ -55,11 +52,6 @@ const hS = StyleSheet.create({
     fontWeight: '800',
     color: '#0b1c30',
     marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: '#45464d',
-    lineHeight: 19,
   },
 });
 
@@ -90,27 +82,10 @@ const statsS = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 24,
   },
-  statBox: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#b45f06',
-    marginTop: 4,
-    letterSpacing: 0.5,
-  },
-  divider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#334155',
-  },
+  statBox: { flex: 1, alignItems: 'center' },
+  statNumber: { fontSize: 28, fontWeight: '800', color: '#fff' },
+  statLabel: { fontSize: 12, fontWeight: '600', color: '#b45f06', marginTop: 4, letterSpacing: 0.5 },
+  divider: { width: 1, height: 40, backgroundColor: '#334155' },
 });
 
 // ─── BADGE STATUT ───
@@ -136,17 +111,10 @@ const bS = StyleSheet.create({
   text:  { fontSize: 10, fontWeight: '700' },
 });
 
-// ─── CARTE DOSSIER style image ───
+// ─── CARTE DOSSIER ───
 function CarteDossier({ dossier, onVoir, onSignaler }: any) {
   const age = dossier.age ? `${dossier.age} ans` : 'Âge inconnu';
   const lieu = dossier.dernier_lieu || dossier.ville || 'Lieu inconnu';
-  const date = dossier.date_disparition
-    ? new Date(dossier.date_disparition).toLocaleDateString('fr-FR', {
-        day: '2-digit', month: 'short', year: 'numeric',
-      }).replace('.', '')
-    : 'Date inconnue';
-
-  // Format date pour affichage "14 Oct. 2023"
   const formattedDate = dossier.date_disparition
     ? new Date(dossier.date_disparition).toLocaleDateString('fr-FR', {
         day: '2-digit', month: 'short', year: 'numeric',
@@ -156,7 +124,6 @@ function CarteDossier({ dossier, onVoir, onSignaler }: any) {
   return (
     <View style={cS.card}>
       <View style={cS.content}>
-        {/* PHOTO */}
         <View style={cS.photoBox}>
           {dossier.photo_url ? (
             <Image source={{ uri: dossier.photo_url }} style={cS.photo} />
@@ -166,8 +133,6 @@ function CarteDossier({ dossier, onVoir, onSignaler }: any) {
             </View>
           )}
         </View>
-
-        {/* INFOS */}
         <View style={cS.infoBox}>
           <Text style={cS.name} numberOfLines={1}>
             {dossier.prenom} {dossier.nom}
@@ -186,8 +151,6 @@ function CarteDossier({ dossier, onVoir, onSignaler }: any) {
           </View>
         </View>
       </View>
-
-      {/* BOUTON VOIR DOSSIER COMPLET */}
       <TouchableOpacity style={cS.btnVoir} onPress={onVoir} activeOpacity={0.8}>
         <Text style={cS.btnVoirText}>Voir le dossier complet</Text>
         <Ionicons name="arrow-forward" size={14} color="#0b1c30" />
@@ -197,83 +160,18 @@ function CarteDossier({ dossier, onVoir, onSignaler }: any) {
 }
 
 const cS = StyleSheet.create({
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  content: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  photoBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#f1f5f9',
-    marginRight: 14,
-  },
-  photo: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  photoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-  },
-  infoBox: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0b1c30',
-    marginBottom: 8,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-    width: 90,
-  },
-  infoValue: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#1e293b',
-    flex: 1,
-  },
-  btnVoir: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  btnVoirText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#0b1c30',
-  },
+  card: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  content: { flexDirection: 'row', marginBottom: 16 },
+  photoBox: { width: 80, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#f1f5f9', marginRight: 14 },
+  photo: { width: '100%', height: '100%', resizeMode: 'cover' },
+  photoPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9' },
+  infoBox: { flex: 1, justifyContent: 'center' },
+  name: { fontSize: 16, fontWeight: '800', color: '#0b1c30', marginBottom: 8 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  infoLabel: { fontSize: 12, fontWeight: '600', color: '#64748b', width: 90 },
+  infoValue: { fontSize: 12, fontWeight: '500', color: '#1e293b', flex: 1 },
+  btnVoir: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  btnVoirText: { fontSize: 13, fontWeight: '600', color: '#0b1c30' },
 });
 
 // ─── MESSAGE D'ERREUR ───
@@ -291,11 +189,11 @@ function ErreurCard({ message, onRetry }: any) {
 }
 
 const errS = StyleSheet.create({
-  box:   { alignItems: 'center', paddingTop: 60, gap: 10, paddingHorizontal: 30 },
+  box: { alignItems: 'center', paddingTop: 60, gap: 10, paddingHorizontal: 30 },
   titre: { fontSize: 16, fontWeight: '700', color: '#0b1c30' },
-  msg:   { fontSize: 12, color: '#64748b', textAlign: 'center', lineHeight: 18 },
-  btn:   { marginTop: 10, backgroundColor: '#b45f06', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
-  btnTxt:{ color: '#fff', fontWeight: '700', fontSize: 13 },
+  msg: { fontSize: 12, color: '#64748b', textAlign: 'center', lineHeight: 18 },
+  btn: { marginTop: 10, backgroundColor: '#b45f06', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
+  btnTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
 
 // ─── ÉCRAN PRINCIPAL ───
@@ -312,12 +210,12 @@ export default function Dossier({ navigation }: any) {
   const [erreur, setErreur]         = useState<string | null>(null);
 
   const filtres: { key: Statut; label: string }[] = [
-    { key: 'tous',              label: 'Tous'            },
-    { key: 'en_cours',          label: 'En cours'        },
-    { key: 'retrouve_vivant',   label: 'Retrouvé vivant' },
-    { key: 'retrouve_decede',   label: 'Retrouvé décédé' },
-    { key: 'suspendu',          label: 'Suspendu'        },
-    { key: 'classe_sans_suite', label: 'Classé'          },
+    { key: 'tous', label: 'Tous' },
+    { key: 'en_cours', label: 'En cours' },
+    { key: 'retrouve_vivant', label: 'Retrouvé vivant' },
+    { key: 'retrouve_decede', label: 'Retrouvé décédé' },
+    { key: 'suspendu', label: 'Suspendu' },
+    { key: 'classe_sans_suite', label: 'Classé' },
   ];
 
   const fetchDossiers = useCallback(async () => {
@@ -340,15 +238,15 @@ export default function Dossier({ navigation }: any) {
           nombre_vues_fiche,
           id_personne
         `)
+        // ⚠️ EXCLURE LES PERSONNES RETROUVÉES
+        .not('statut_dossier', 'in', '("retrouve_vivant","retrouve_decede")')
         .order('date_disparition', { ascending: false })
         .limit(50);
 
-      if (filtre !== 'tous') {
+      if (filtre !== 'tous' && filtre !== 'retrouve_vivant' && filtre !== 'retrouve_decede') {
         queryDossiers = queryDossiers.eq('statut_dossier', filtre);
       }
 
-      // Filtre âge - sera fait côté client
-      // Filtre lieu
       if (lieu.trim()) {
         queryDossiers = queryDossiers.or(`lieu_disparition.ilike.%${lieu.trim()}%,ville_disparition.ilike.%${lieu.trim()}%`);
       }
@@ -370,12 +268,12 @@ export default function Dossier({ navigation }: any) {
       let personnesMap: Record<string, any> = {};
 
       if (personneIds.length > 0) {
-        const { data: dataPersonnes, error: errPersonnes } = await supabase
+        const { data: dataPersonnes } = await supabase
           .from('personne')
           .select(`id, nom, prenom, age_estime_min, age_estime_max, sexe, photo_principale`)
           .in('id', personneIds);
 
-        if (!errPersonnes && dataPersonnes) {
+        if (dataPersonnes) {
           (dataPersonnes ?? []).forEach((p: any) => { personnesMap[p.id] = p; });
         }
 
@@ -421,7 +319,6 @@ export default function Dossier({ navigation }: any) {
         };
       });
 
-      // Filtres côté client
       if (recherche.trim()) {
         const q = recherche.toLowerCase().trim();
         mapped = mapped.filter(d =>
@@ -432,7 +329,6 @@ export default function Dossier({ navigation }: any) {
         );
       }
 
-      // Filtre âge
       if (ageMin || ageMax) {
         const min = ageMin ? parseInt(ageMin) : 0;
         const max = ageMax ? parseInt(ageMax) : 999;
@@ -471,13 +367,9 @@ export default function Dossier({ navigation }: any) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
-      {/* HEADER */}
       <Header navigation={navigation} />
-
-      {/* STATS BANNER */}
       <StatsBanner totalActifs={totalActifs} totalSemaine={totalSemaine} />
 
-      {/* BARRE DE RECHERCHE */}
       <View style={styles.searchBar}>
         <Ionicons name="search-outline" size={18} color="#94a3b8" />
         <TextInput
@@ -496,7 +388,6 @@ export default function Dossier({ navigation }: any) {
         )}
       </View>
 
-      {/* FILTRES STATUT */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -516,7 +407,6 @@ export default function Dossier({ navigation }: any) {
         ))}
       </ScrollView>
 
-      {/* LISTE DES DOSSIERS */}
       <ScrollView
         contentContainerStyle={styles.liste}
         showsVerticalScrollIndicator={false}
@@ -551,14 +441,8 @@ export default function Dossier({ navigation }: any) {
             <CarteDossier
               key={d.id}
               dossier={d}
-              onVoir={() => navigation.navigate('VoirDossier', {
-                dossierId: d.id,
-                dossier: d,
-              })}
-              onSignaler={() => navigation.navigate('NouveauSignalement', {
-                dossierId: d.id,
-                dossier: d,
-              })}
+              onVoir={() => navigation.navigate('VoirDossier', { dossierId: d.id, dossier: d })}
+              onSignaler={() => navigation.navigate('NouveauSignalement', { dossierId: d.id, dossier: d })}
             />
           ))
         )}
@@ -571,35 +455,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
 
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 12,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
   },
   searchInput: { flex: 1, fontSize: 14, color: '#0b1c30', padding: 0 },
 
   filtresStatutScroll: { marginBottom: 16 },
   filtresStatutContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center', paddingVertical: 4 },
-  statutBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-  },
+  statutBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#cbd5e1' },
   statutBtnActive: { backgroundColor: '#0b1c30', borderColor: '#0b1c30' },
   statutBtnText: { fontSize: 12, fontWeight: '600', color: '#475569' },
   statutBtnTextActive: { color: '#fff' },

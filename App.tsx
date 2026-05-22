@@ -143,7 +143,7 @@ function MainTabs() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// NAVIGATION PRINCIPALE AVEC DEEP LINKING
+// NAVIGATION PRINCIPALE AVEC DEEP LINKING (mis à jour)
 // ─────────────────────────────────────────────────────────────
 function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
@@ -196,24 +196,38 @@ function App() {
     };
   }, []);
 
-  // Gestion des liens profonds (deep linking)
+  // ─── GESTION DES LIENS PROFONDS (DEEP LINKING) MIS À JOUR ───
   useEffect(() => {
     const handleDeepLink = async (url: string | null) => {
       console.log('🔗 Lien profond reçu:', url);
       
       if (!url) return;
 
+      // Format: retrouvonsles://dossier/ID
       let match = url.match(/retrouvonsles:\/\/dossier\/(.+)/);
       if (match && match[1]) {
         const dossierId = match[1];
+        console.log('📁 Navigation vers dossier (deep link):', dossierId);
         setInitialRoute('VoirDossier');
         setInitialParams({ id: dossierId });
         return;
       }
 
+      // Format web: https://retrouvonsles.te-sea.com/dossier/ID
+      match = url.match(/retrouvonsles\.te-sea\.com\/dossier\/(.+)/);
+      if (match && match[1]) {
+        const dossierId = match[1];
+        console.log('📁 Navigation vers dossier (web link):', dossierId);
+        setInitialRoute('VoirDossier');
+        setInitialParams({ id: dossierId });
+        return;
+      }
+
+      // Ancien format vercel (gardé pour compatibilité)
       match = url.match(/retrouvonsles\.vercel\.app\/disparition\/(.+)/);
       if (match && match[1]) {
         const dossierId = match[1];
+        console.log('📁 Navigation vers dossier (ancien lien):', dossierId);
         setInitialRoute('VoirDossier');
         setInitialParams({ id: dossierId });
         return;

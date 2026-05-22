@@ -17,7 +17,6 @@ export default function SignalementPage({ navigation }: any) {
   const [filtre, setFiltre] = useState('tous');
   const [total, setTotal] = useState(0);
 
-  // Calcul des dates pour le filtre 3 mois
   const troisMoisAgo = new Date();
   troisMoisAgo.setMonth(troisMoisAgo.getMonth() - 3);
 
@@ -57,14 +56,12 @@ export default function SignalementPage({ navigation }: any) {
         .gte('created_at', troisMoisAgo.toISOString())
         .order('created_at', { ascending: false });
 
-      // Filtre par type
       if (filtre === 'alertes') {
         query = query.not('id_dossier', 'is', null);
       } else if (filtre === 'signalements') {
         query = query.is('id_dossier', null);
       }
 
-      // Recherche
       if (search.trim()) {
         query = query.or(`description.ilike.%${search.trim()}%,ville_observation.ilike.%${search.trim()}%`);
       }
@@ -85,23 +82,6 @@ export default function SignalementPage({ navigation }: any) {
 
   useEffect(() => { fetchSignalements(); }, [fetchSignalements]);
 
-  const handleSupprimer = (id: string) => {
-    Alert.alert(
-      'Supprimer',
-      'Voulez-vous vraiment supprimer ce signalement ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer', style: 'destructive',
-          onPress: async () => {
-            await supabase.from('signalement').delete().eq('id', id);
-            fetchSignalements();
-          }
-        }
-      ]
-    );
-  };
-
   const getStatutColor = (s: string) => {
     const map: Record<string, string> = {
       en_attente:      '#ef4444',
@@ -117,7 +97,7 @@ export default function SignalementPage({ navigation }: any) {
       en_attente:      'En attente',
       en_verification: 'En vérification',
       valide:          'Validé',
-      invalide:        'Invalide',
+      invalide:        'Rejeté',
     };
     return map[s] || s;
   };
@@ -128,15 +108,15 @@ export default function SignalementPage({ navigation }: any) {
     { label: 'Mes signalements', value: 'signalements', count: signalements.filter(s => !s.id_dossier).length },
   ];
 
-  // Calcul des stats
   const actifsCount = signalements.filter(s => s.statut_validation === 'en_attente' || s.statut_validation === 'en_verification').length;
-  const trouvesCount = signalements.filter(s => s.statut_validation === 'valide').length;
+  const valideCount = signalements.filter(s => s.statut_validation === 'valide').length;
+  const rejeteCount = signalements.filter(s => s.statut_validation === 'invalide').length;
+  const enAttenteCount = signalements.filter(s => s.statut_validation === 'en_attente' || s.statut_validation === 'en_verification').length;
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
-      {/* HEADER avec titre comme dans l'image */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Signalements Actifs</Text>
         <Text style={styles.headerSubtitle}>
@@ -144,7 +124,6 @@ export default function SignalementPage({ navigation }: any) {
         </Text>
       </View>
 
-      {/* BARRE DE RECHERCHE + BOUTON FILTRER comme dans l'image */}
       <View style={styles.searchSection}>
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={18} color="#94a3b8" />
@@ -165,7 +144,6 @@ export default function SignalementPage({ navigation }: any) {
         <TouchableOpacity 
           style={styles.filterButton}
           onPress={() => {
-            // Cycle through filters
             const currentIndex = filtreOptions.findIndex(f => f.value === filtre);
             const nextIndex = (currentIndex + 1) % filtreOptions.length;
             setFiltre(filtreOptions[nextIndex].value);
@@ -178,7 +156,6 @@ export default function SignalementPage({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* STATS comme dans l'image */}
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
           <Text style={styles.statNumber}>{signalements.length}</Text>
@@ -186,12 +163,21 @@ export default function SignalementPage({ navigation }: any) {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{trouvesCount}</Text>
-          <Text style={styles.statLabel}>TROUVÉS (30J)</Text>
+          <Text style={styles.statNumber}>{valideCount}</Text>
+          <Text style={styles.statLabel}>VALIDÉS</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={styles.statNumber}>{rejeteCount}</Text>
+          <Text style={styles.statLabel}>REJETÉS</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={styles.statNumber}>{enAttenteCount}</Text>
+          <Text style={styles.statLabel}>EN ATTENTE</Text>
         </View>
       </View>
 
-      {/* LISTE DES SIGNALEMENTS */}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -212,13 +198,6 @@ export default function SignalementPage({ navigation }: any) {
             <Ionicons name="document-text-outline" size={52} color="#cbd5e1" />
             <Text style={styles.emptyTitle}>Aucun signalement</Text>
             <Text style={styles.emptySub}>Vous n'avez pas encore fait de signalement dans les 3 derniers mois.</Text>
-            <TouchableOpacity
-              style={styles.btnNouveauEmpty}
-              onPress={() => navigation.navigate('NouveauSignalement')}
-            >
-              <Ionicons name="add" size={16} color="#FFF" />
-              <Text style={styles.btnNouveauEmptyText}>Signaler</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.list}>
@@ -230,8 +209,8 @@ export default function SignalementPage({ navigation }: any) {
               const dossier = s.dossier_disparition;
               const personne = dossier?.personne;
               const isUrgent = dossier?.niveau_urgence === 'critique' || dossier?.niveau_urgence === 'urgent';
+              const estValide = s.statut_validation === 'valide';
               
-              // Calcul du délai
               const dateObj = new Date(s.date_observation || s.created_at);
               const diffHeures = Math.floor((Date.now() - dateObj.getTime()) / (1000 * 3600));
               const delaiText = diffHeures < 24 
@@ -240,20 +219,22 @@ export default function SignalementPage({ navigation }: any) {
               
               return (
                 <View key={s.id} style={[styles.card, isUrgent && styles.cardUrgent]}>
-                  {/* HEADER DE LA CARTE avec statut */}
                   <View style={styles.cardHeader}>
                     <View style={[styles.statusDot, { backgroundColor: statutColor }]} />
                     <Text style={styles.statusText}>{statutLabel}</Text>
                     <Text style={styles.delaiText}>{delaiText}</Text>
                   </View>
 
-                  {/* CONTENU PRINCIPAL */}
                   <TouchableOpacity 
                     style={styles.cardContent}
                     activeOpacity={0.9}
-                    onPress={() => navigation.navigate('VoirSignalement', { signalementId: s.id })}
+                    onPress={() => {
+                      if (!estValide) {
+                        navigation.navigate('VoirSignalement', { signalementId: s.id });
+                      }
+                    }}
+                    disabled={estValide}
                   >
-                    {/* PHOTO */}
                     <View style={styles.cardImageBox}>
                       {photoUrl ? (
                         <Image source={{ uri: photoUrl }} style={styles.cardImage} />
@@ -264,14 +245,12 @@ export default function SignalementPage({ navigation }: any) {
                       )}
                     </View>
 
-                    {/* INFOS */}
                     <View style={styles.cardInfo}>
                       <Text style={styles.cardName}>
                         {personne?.prenom || personne?.nom || 'Personne inconnue'}
                         {personne?.prenom && personne?.nom && ` ${personne.nom}`}
                       </Text>
                       
-                      {/* Âge et lieu */}
                       <View style={styles.cardMeta}>
                         {(personne?.age_estime_min || personne?.age_estime_max) && (
                           <Text style={styles.cardMetaText}>
@@ -288,7 +267,6 @@ export default function SignalementPage({ navigation }: any) {
                         </View>
                       </View>
 
-                      {/* DESCRIPTION */}
                       {s.description && (
                         <Text style={styles.cardDesc} numberOfLines={2}>
                           {s.description}
@@ -297,41 +275,23 @@ export default function SignalementPage({ navigation }: any) {
                     </View>
                   </TouchableOpacity>
 
-                  {/* BOUTONS */}
-                  <View style={styles.cardButtons}>
-                    <TouchableOpacity
-                      style={styles.btnPartager}
-                      onPress={() => {
-                        // Fonction de partage
-                        Alert.alert('Partager', `Partager le signalement de ${personne?.prenom || ''} ${personne?.nom || ''}`);
-                      }}
-                    >
-                      <Ionicons name="share-outline" size={14} color="#3b82f6" />
-                      <Text style={styles.btnPartagerText}>Partager</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.btnVoir}
-                      onPress={() => navigation.navigate('VoirSignalement', { signalementId: s.id })}
-                    >
-                      <Ionicons name="eye-outline" size={14} color="#FFF" />
-                      <Text style={styles.btnVoirText}>Voir le dossier</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {!estValide && (
+                    <View style={styles.cardButtons}>
+                      <TouchableOpacity
+                        style={styles.btnVoir}
+                        onPress={() => navigation.navigate('VoirSignalement', { signalementId: s.id })}
+                      >
+                        <Ionicons name="eye-outline" size={14} color="#FFF" />
+                        <Text style={styles.btnVoirText}>Voir le dossier</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               );
             })}
           </View>
         )}
       </ScrollView>
-
-      {/* BOUTON FLOATING */}
-      <TouchableOpacity
-        style={styles.floatingButton}
-        onPress={() => navigation.navigate('NouveauSignalement')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={28} color="#FFF" />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -339,37 +299,31 @@ export default function SignalementPage({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   
-  // HEADER comme dans l'image
   header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: '#f8fafc' },
   headerTitle: { fontSize: 24, fontWeight: '700', color: '#0b1c30', marginBottom: 4 },
   headerSubtitle: { fontSize: 13, color: '#45464d', lineHeight: 19 },
   
-  // BARRE DE RECHERCHE comme dans l'image
   searchSection: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 16 },
   searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   searchInput: { flex: 1, fontSize: 14, color: '#1e293b', paddingVertical: 0 },
   filterButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#eff6ff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#bfdbfe' },
   filterButtonText: { fontSize: 13, fontWeight: '500', color: '#1d4ed8' },
   
-  // STATS comme dans l'image
-  statsRow: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 16, marginBottom: 20, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 24, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
+  statsRow: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 16, marginBottom: 20, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 12, borderWidth: 1, borderColor: '#e2e8f0' },
   statBox: { flex: 1, alignItems: 'center' },
-  statNumber: { fontSize: 22, fontWeight: '800', color: '#0b1c30' },
-  statLabel: { fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: '600', letterSpacing: 0.5 },
-  statDivider: { width: 1, height: 40, backgroundColor: '#e2e8f0' },
+  statNumber: { fontSize: 16, fontWeight: '800', color: '#0b1c30' },
+  statLabel: { fontSize: 10, color: '#64748b', marginTop: 4, fontWeight: '600', letterSpacing: 0.3 },
+  statDivider: { width: 1, height: 30, backgroundColor: '#e2e8f0' },
   
   scrollContent: { padding: 16, paddingBottom: 80 },
   loadingBox: { alignItems: 'center', paddingVertical: 60 },
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
   emptySub: { fontSize: 13, color: '#94a3b8', textAlign: 'center' },
-  btnNouveauEmpty: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0b1c30', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 8 },
-  btnNouveauEmptyText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
   
   list: { gap: 16 },
   
-  // CARTE comme dans l'image
-  card: { backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
+  card: { backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
   cardUrgent: { borderLeftWidth: 4, borderLeftColor: '#dc2626' },
   
   cardHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
@@ -390,11 +344,7 @@ const styles = StyleSheet.create({
   locationText: { fontSize: 12, color: '#64748b', flex: 1 },
   cardDesc: { fontSize: 12, color: '#64748b', lineHeight: 16, marginTop: 4 },
   
-  cardButtons: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
-  btnPartager: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
-  btnPartagerText: { fontSize: 12, fontWeight: '600', color: '#3b82f6' },
-  btnVoir: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, backgroundColor: '#0b1c30' },
+  cardButtons: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
+  btnVoir: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, backgroundColor: '#0b1c30' },
   btnVoirText: { fontSize: 12, fontWeight: '600', color: '#FFF' },
-  
-  floatingButton: { position: 'absolute', bottom: 20, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#b45f06', justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#b45f06', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, zIndex: 999 },
 });

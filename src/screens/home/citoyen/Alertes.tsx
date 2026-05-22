@@ -223,14 +223,12 @@ function AlerteCard({ alerte, navigation }: { alerte: AlerteItem; navigation: an
     }
   };
 
-  // ── Signaler vu : redirige vers NouveauSignalement avec protection identité ──
+  // ── Signaler vu : redirige vers VoirSignalement ──
   const handleSignalerVu = () => {
-    navigation.navigate('NouveauSignalement', {
+    navigation.navigate('VoirSignalement', {
+      signalementId: alerte.id,
       dossierId: alerte.id_dossier,
-      nomPersonne: alerte.personne_nom,
-      prenomPersonne: alerte.personne_prenom,
       modeSignalerVu: true,
-      // identiteProtegee: true → visible_public=false, seules les autorités voient le signaleur
     });
   };
 
