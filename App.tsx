@@ -32,6 +32,12 @@ import VoirSignalement from './src/screens/home/citoyen/VoirSignalement';
 import SOS from './src/screens/home/citoyen/SOS';
 import ConversationsList from './src/screens/home/citoyen/ConversationsList';
 import ConversationDetail from './src/screens/home/citoyen/ConversationDetail';
+import ContactsUrgence from './src/screens/home/citoyen/ContactsUrgence';
+import PreDeclarationList from './src/screens/home/citoyen/PreDeclarationList';
+import PreDeclarationDetail from './src/screens/home/citoyen/PreDeclarationDetail';
+import NouvellePreDeclaration from './src/screens/home/citoyen/NouvellePreDeclaration';
+
+
 
 // Écrans pros
 import HomePolice from './src/screens/home/homePolice';
@@ -288,10 +294,15 @@ function App() {
 
               {/* SOS - accessible uniquement via le bouton flottant */}
               <Stack.Screen name="SOS" component={SOS} />
+              <Stack.Screen name="ContactsUrgence" component={ContactsUrgence} />
+
 
               {/* Messagerie - accessible uniquement via le bouton flottant */}
               <Stack.Screen name="ConversationsList" component={ConversationsList} />
               <Stack.Screen name="ConversationDetail" component={ConversationDetail} />
+              <Stack.Screen name="PreDeclarationList" component={PreDeclarationList} />
+            <Stack.Screen name="PreDeclarationDetail" component={PreDeclarationDetail} />
+            <Stack.Screen name="NouvellePreDeclaration" component={NouvellePreDeclaration} />
 
               {/* Pros */}
               <Stack.Screen name="homeAdmin">{(props) => <HomeAdmin {...props} level={6} />}</Stack.Screen>

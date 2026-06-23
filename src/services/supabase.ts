@@ -1,9 +1,3 @@
-// SQL à exécuter dans Supabase :
-// CREATE TABLE user_tokens (
-//   user_id uuid references users(id) primary key,
-//   fcm_token text
-// );
-
 import { AppState } from 'react-native';
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,7 +16,16 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     },
 });
 
-// Gère le rafraîchissement du token quand l'app revient au premier plan
+// TEST TEMPORAIRE
+supabase.auth.signInWithPassword({
+  email: 'test@test.com',
+  password: 'test123'
+}).then(({ data, error }) => {
+  console.log('TEST SUPABASE RESULT:', JSON.stringify(error));
+}).catch(err => {
+  console.log('TEST FETCH ERROR:', JSON.stringify(err));
+});
+
 AppState.addEventListener('change', (state) => {
     if (state === 'active') {
         supabase.auth.startAutoRefresh();

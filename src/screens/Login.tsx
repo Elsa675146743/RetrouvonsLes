@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import { UserRole } from '../types/auth'; 
+import { UserRole } from '../types/auth';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { authService } from '../services/authService';
 
@@ -15,6 +15,14 @@ const Login = ({ navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    // TEST TEMPORAIRE RÉSEAU
+    try {
+      const response = await fetch('https://yvzxebrudijuwygzpvnf.supabase.co');
+      console.log('FETCH OK:', response.status);
+    } catch (e: any) {
+      console.log('FETCH FAILED:', e.message);
+    }
+
     if (!email || !password) {
       Alert.alert("Erreur", "Veuillez entrer votre email et mot de passe.");
       return;
@@ -24,19 +32,15 @@ const Login = ({ navigation }: any) => {
 
     try {
       console.log("Tentative de connexion pour :", email);
-
-      // 1. Appel API Login Supabase
       const { user } = await authService.login(email.trim(), password);
 
       if (!user) {
         throw new Error("Erreur lors de la récupération de l'utilisateur.");
       }
 
-      // 2. Récupération du rôle réel depuis la base de données
       const { role, level } = await authService.getUserRole(user.id);
       console.log(`Rôle détecté: ${role} (Niveau d'accès: ${level})`);
 
-      // 3. Logique de redirection multi-rôles mise à jour
       let targetRoute = '';
 
       switch (role) {
@@ -45,46 +49,38 @@ const Login = ({ navigation }: any) => {
         case UserRole.ADMIN_ORGANISATION:
           targetRoute = 'homeAdmin';
           break;
-
         case UserRole.POLICE:
         case UserRole.OFFICIER_POLICE:
         case UserRole.GENDARMERIE:
         case UserRole.AGENT_GENDARMERIE:
           targetRoute = 'homePolice';
           break;
-
         case UserRole.MODERATEUR:
           targetRoute = 'homeModerateur';
           break;
-
         case UserRole.OPERATEUR_SAISIE:
           targetRoute = 'homeOperateurSaisie';
           break;
-
         case UserRole.ONG:
         case UserRole.RESPONSABLE_ONG:
           targetRoute = 'homeResponsableONG';
           break;
-
         case UserRole.CITOYEN:
         case UserRole.CITOYEN_STANDARD:
         case UserRole.CITOYEN_VERIFIE:
-          targetRoute = 'MainTabs'; 
+          targetRoute = 'MainTabs';
           break;
-
         default:
           console.log("Rôle non reconnu, redirection vers interface standard");
           targetRoute = 'MainTabs';
           break;
       }
 
-      // 4. Redirection finale avec réinitialisation de la navigation
       navigation.reset({
         index: 0,
         routes: [{ name: targetRoute, params: { role, accessLevel: level } }],
       });
 
-      // Alerte personnalisée selon le rôle (sauf pour citoyen standard)
       if (targetRoute !== 'MainTabs') {
         Alert.alert("Accès Professionnel", `Bienvenue dans l'espace ${role.replace('_', ' ')}`);
       }
@@ -92,13 +88,13 @@ const Login = ({ navigation }: any) => {
     } catch (error: any) {
       console.log("Erreur de connexion:", error.message);
       let message = "Une erreur est survenue.";
-      
+
       if (error.message.includes("Invalid login credentials")) {
         message = "E-mail ou mot de passe incorrect.";
       } else if (error.message.includes("network")) {
         message = "Problème de connexion réseau.";
       }
-      
+
       Alert.alert("Connexion échouée", message);
     } finally {
       setLoading(false);

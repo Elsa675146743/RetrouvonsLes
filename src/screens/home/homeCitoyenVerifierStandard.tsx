@@ -49,6 +49,7 @@ function MenuPlus({ visible, onClose, navigation }: any) {
   const items = [
     { icon: 'chatbubbles-outline', label: 'Messagerie', screen: 'ConversationsList', color: '#b45f06' },
     { icon: 'alert-circle-outline', label: 'SOS Urgence', screen: 'SOS', color: '#dc2626' },
+      { icon: 'document-text-outline', label: 'Pré-déclaration', screen: 'PreDeclarationList', color: '#3b82f6' }, 
   ];
 
   return (
