@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { View, ActivityIndicator, Text, Linking } from 'react-native';
+import { View, ActivityIndicator, Text, Linking, Alert, AppState } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { supabase } from './src/services/supabase';
 
 // Services & Context
 import { AuthProvider } from './src/context/AuthContext';
@@ -36,8 +37,6 @@ import ContactsUrgence from './src/screens/home/citoyen/ContactsUrgence';
 import PreDeclarationList from './src/screens/home/citoyen/PreDeclarationList';
 import PreDeclarationDetail from './src/screens/home/citoyen/PreDeclarationDetail';
 import NouvellePreDeclaration from './src/screens/home/citoyen/NouvellePreDeclaration';
-
-
 
 // Écrans pros
 import HomePolice from './src/screens/home/homePolice';
@@ -87,7 +86,7 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // ─────────────────────────────────────────────────────────────
-// NAVIGATION BASSE CITOYENS (4 onglets + bouton flottant séparé)
+// NAVIGATION BASSE CITOYENS
 // ─────────────────────────────────────────────────────────────
 function MainTabs() {
   return (
@@ -122,15 +121,14 @@ function MainTabs() {
           tabBarLabel: 'Signalement',
         }}
       />
-
       <Tab.Screen
-        name="DossiersEnCours"
-        component={Dossier}
+        name="ConversationsList"
+        component={ConversationsList}
         options={{
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'folder' : 'folder-outline'} size={22} color={color} />
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'Dossiers',
+          tabBarLabel: 'Messagerie',
         }}
       />
 
@@ -149,100 +147,501 @@ function MainTabs() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// NAVIGATION PRINCIPALE AVEC DEEP LINKING (mis à jour)
+// NAVIGATION PRINCIPALE
 // ─────────────────────────────────────────────────────────────
 function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
   const [initialParams, setInitialParams] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [badgeCount, setBadgeCount] = useState(0);
+  const navigationRef = useRef<any>(null);
+  const appState = useRef(AppState.currentState);
 
-  // ─── NOTIFICATIONS PUSH FIREBASE ───
+  // ─── Envoyer une notification push directement (appel Edge Function) ───
+  const sendPushNotification = async (notificationData: any) => {
+    try {
+      console.log('📨 [PUSH] Envoi de la notification push...');
+      const { data, error } = await supabase.functions.invoke('notification-fcm-send', {
+        body: {
+          type: 'INSERT',
+          table: 'notification',
+          record: notificationData
+        }
+      });
+      
+      if (error) {
+        console.error('❌ [PUSH] Erreur invocation Edge Function:', error);
+      } else {
+        console.log('✅ [PUSH] Notification push envoyée:', data);
+      }
+      return { data, error };
+    } catch (error) {
+      console.error('❌ [PUSH] Erreur:', error);
+      return { data: null, error };
+    }
+  };
+
+  // ─── Récupérer le nombre de notifications non lues ───
+  const fetchBadgeCount = async () => {
+    try {
+      console.log('📊 [BADGE] Récupération du badge...');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('📊 [BADGE] Utilisateur non connecté');
+        return;
+      }
+      
+      // ✅ Récupérer les notifications non lues
+      const { data: notifications, count, error } = await supabase
+        .from('notification')
+        .select('*', { count: 'exact', head: false })
+        .eq('id_utilisateur', user.id)
+        .eq('lue', false)
+        .order('date_creation', { ascending: false });
+
+      if (!error) {
+        console.log('📊 [BADGE] Nombre de notifications non lues:', count);
+        setBadgeCount(count || 0);
+        
+        // ✅ Pour chaque notification non envoyée, déclencher l'envoi
+        const notificationsNonEnvoyees = (notifications || []).filter(
+          n => n.statut_envoi === 'en_attente' || n.statut_envoi === null
+        );
+        
+        if (notificationsNonEnvoyees.length > 0) {
+          console.log(`📨 [PUSH] ${notificationsNonEnvoyees.length} notification(s) à envoyer...`);
+          
+          for (const notif of notificationsNonEnvoyees) {
+            console.log(`📨 [PUSH] Envoi de la notification ${notif.id}...`);
+            await sendPushNotification(notif);
+            
+            // ✅ Mettre à jour le statut de la notification
+            await supabase
+              .from('notification')
+              .update({ statut_envoi: 'envoyee' })
+              .eq('id', notif.id);
+          }
+        }
+      } else {
+        console.log('📊 [BADGE] Erreur:', error);
+      }
+    } catch (e) {
+      console.warn('📊 [BADGE] Erreur:', e);
+    }
+  };
+
+  // ─── Extraire les IDs depuis clickPath ou clickUrl ───
+  const extractIdsFromClickPath = (clickPath: string): { type: string; id: string | null } => {
+    console.log('📌 Extraction depuis clickPath:', clickPath);
+    
+    let match = clickPath.match(/\/alerts\?.*(?:alerte|focus)=([^&]+)/);
+    if (match) {
+      return { type: 'alerte', id: match[1] };
+    }
+    
+    match = clickPath.match(/\/(?:citizen\/)?dossier\/([^/?]+)/);
+    if (match) {
+      return { type: 'dossier', id: match[1] };
+    }
+    
+    match = clickPath.match(/\/pre-declarations\/([^/?]+)/);
+    if (match) {
+      return { type: 'preDeclaration', id: match[1] };
+    }
+    
+    match = clickPath.match(/\/signalements\/([^/?]+)/);
+    if (match) {
+      return { type: 'signalement', id: match[1] };
+    }
+    
+    if (clickPath.includes('/sos')) {
+      match = clickPath.match(/focus=([^&]+)/);
+      if (match) {
+        return { type: 'sos', id: match[1] };
+      }
+      return { type: 'sos', id: null };
+    }
+    
+    match = clickPath.match(/\/conversation\/([^/?]+)/);
+    if (match) {
+      return { type: 'conversation', id: match[1] };
+    }
+    
+    return { type: 'unknown', id: null };
+  };
+
+  // ─── Naviguer vers la page appropriée ───
+  const navigateTo = (type: string, id: string | null) => {
+    console.log('🚀 Navigation vers:', type, 'ID:', id);
+    
+    switch (type) {
+      case 'alerte':
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: id });
+        break;
+      case 'dossier':
+        if (id) {
+          setInitialRoute('VoirDossier');
+          setInitialParams({ id: id });
+        } else {
+          setInitialRoute('Alertes');
+        }
+        break;
+      case 'preDeclaration':
+        if (id) {
+          setInitialRoute('PreDeclarationDetail');
+          setInitialParams({ id: id });
+        } else {
+          setInitialRoute('PreDeclarationList');
+        }
+        break;
+      case 'signalement':
+        if (id) {
+          setInitialRoute('VoirSignalement');
+          setInitialParams({ id: id });
+        } else {
+          setInitialRoute('Alertes');
+        }
+        break;
+      case 'sos':
+        setInitialRoute('SOS');
+        if (id) {
+          setInitialParams({ focus: id });
+        }
+        break;
+      case 'conversation':
+        if (id) {
+          setInitialRoute('ConversationDetail');
+          setInitialParams({
+            conversationId: id,
+            contexteNom: 'Nouveau message',
+            contexteReference: '#' + id.slice(-8),
+          });
+        } else {
+          setInitialRoute('ConversationsList');
+        }
+        break;
+      default:
+        setInitialRoute('Alertes');
+    }
+  };
+
+  // ─── Gérer l'ouverture d'une notification ───
+  const handleNotificationOpen = (remoteMessage: any) => {
+    console.log('🔔 [NOTIFICATION] Ouverte:', JSON.stringify(remoteMessage, null, 2));
+    
+    const data = remoteMessage?.data || {};
+    
+    const clickPath = data?.clickPath;
+    if (clickPath) {
+      const extracted = extractIdsFromClickPath(clickPath);
+      if (extracted && extracted.type !== 'unknown') {
+        console.log('📊 ID extrait:', extracted);
+        navigateTo(extracted.type, extracted.id);
+        return;
+      }
+    }
+    
+    const clickUrl = data?.clickUrl;
+    if (clickUrl) {
+      const extracted = extractIdsFromClickPath(clickUrl);
+      if (extracted && extracted.type !== 'unknown') {
+        console.log('📊 ID extrait depuis clickUrl:', extracted);
+        navigateTo(extracted.type, extracted.id);
+        return;
+      }
+    }
+    
+    const alerteId = data?.alerte_id || data?.alertId || data?.id_alerte || data?.notification_id;
+    const dossierId = data?.dossier_id || data?.dossierId || data?.id_dossier;
+    const conversationId = data?.conversation_id || data?.conversationId || data?.id_conversation;
+    const sosId = data?.sos_id || data?.sosId || data?.id_sos;
+    const preDeclarationId = data?.pre_declaration_id || data?.preDeclarationId;
+    const signalementId = data?.signalement_id || data?.signalementId;
+    const type = data?.type || data?.notification_type || data?.kind;
+
+    console.log('📊 Données extraites (fallback):', { 
+      alerteId, dossierId, conversationId, sosId, preDeclarationId, signalementId, type 
+    });
+
+    if (alerteId) {
+      navigateTo('alerte', alerteId);
+    } else if (dossierId) {
+      navigateTo('dossier', dossierId);
+    } else if (preDeclarationId) {
+      navigateTo('preDeclaration', preDeclarationId);
+    } else if (signalementId) {
+      navigateTo('signalement', signalementId);
+    } else if (conversationId) {
+      navigateTo('conversation', conversationId);
+    } else if (sosId || type === 'sos') {
+      navigateTo('sos', sosId || null);
+    } else {
+      navigateTo('unknown', null);
+    }
+  };
+
+  // ─── Afficher une notification dans l'application ───
+  const showInAppNotification = (remoteMessage: any) => {
+    const title = remoteMessage?.notification?.title || '📢 Nouvelle alerte';
+    const body = remoteMessage?.notification?.body || '';
+    const data = remoteMessage?.data || {};
+    const clickPath = data?.clickPath;
+
+    Alert.alert(
+      title,
+      body,
+      [
+        {
+          text: 'Voir',
+          onPress: () => {
+            if (clickPath) {
+              const extracted = extractIdsFromClickPath(clickPath);
+              if (extracted && extracted.type !== 'unknown') {
+                switch (extracted.type) {
+                  case 'alerte':
+                    navigationRef.current?.navigate('Alertes', { focus: extracted.id });
+                    break;
+                  case 'dossier':
+                    if (extracted.id) {
+                      navigationRef.current?.navigate('VoirDossier', { id: extracted.id });
+                    } else {
+                      navigationRef.current?.navigate('Alertes');
+                    }
+                    break;
+                  case 'preDeclaration':
+                    if (extracted.id) {
+                      navigationRef.current?.navigate('PreDeclarationDetail', { id: extracted.id });
+                    } else {
+                      navigationRef.current?.navigate('PreDeclarationList');
+                    }
+                    break;
+                  case 'signalement':
+                    if (extracted.id) {
+                      navigationRef.current?.navigate('VoirSignalement', { id: extracted.id });
+                    } else {
+                      navigationRef.current?.navigate('Alertes');
+                    }
+                    break;
+                  case 'sos':
+                    navigationRef.current?.navigate('SOS');
+                    break;
+                  case 'conversation':
+                    if (extracted.id) {
+                      navigationRef.current?.navigate('ConversationDetail', {
+                        conversationId: extracted.id,
+                        contexteNom: 'Nouveau message',
+                        contexteReference: '#' + extracted.id.slice(-8),
+                      });
+                    } else {
+                      navigationRef.current?.navigate('ConversationsList');
+                    }
+                    break;
+                  default:
+                    navigationRef.current?.navigate('Alertes');
+                }
+              } else {
+                navigationRef.current?.navigate('Alertes');
+              }
+            } else {
+              navigationRef.current?.navigate('Alertes');
+            }
+          },
+        },
+        { text: 'OK', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // ─── SETUP FCM ───
   useEffect(() => {
     let unsubscribeForeground: (() => void) | undefined;
+    let appStateSubscription: any;
 
     const setupFCM = async () => {
       try {
-        const { default: messaging } = await import('@react-native-firebase/messaging');
+        console.log('📱 [FCM] 1. setupFCM appelé');
+        const messaging = (await import('@react-native-firebase/messaging')).default;
 
-        await messaging().requestPermission().catch(() => {});
+        // ✅ Demander la permission
+        const authStatus = await messaging().requestPermission();
+        const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+                        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-        unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
-          console.log('📲 Notification foreground:', remoteMessage.notification?.title);
-        });
+        console.log('📱 [FCM] 2. Permission:', enabled ? '✅ AUTORISÉE' : '❌ NON AUTORISÉE');
 
-        messaging().onNotificationOpenedApp((remoteMessage) => {
-          const dossierId = remoteMessage.data?.dossier_id as string | undefined;
-          if (dossierId) {
-            setInitialRoute('VoirDossier');
-            setInitialParams({ id: dossierId });
-          } else {
-            setInitialRoute('Alertes');
-          }
-        });
-
-        const remoteMessage = await messaging().getInitialNotification();
-        if (remoteMessage) {
-          const dossierId = remoteMessage.data?.dossier_id as string | undefined;
-          if (dossierId) {
-            setInitialRoute('VoirDossier');
-            setInitialParams({ id: dossierId });
-          } else {
-            setInitialRoute('Alertes');
-          }
+        if (!enabled) {
+          console.log('❌ FCM non autorisé');
+          return;
         }
+
+        // ✅ Récupérer le token FCM
+        const token = await messaging().getToken();
+        console.log('📱 [FCM] 3. Token FCM:', token);
+
+        // ✅ Enregistrer le token dans Supabase
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            console.log('📱 [FCM] 4. Utilisateur ID:', user.id);
+            const { error } = await supabase
+              .from('utilisateur_fcm_token')
+              .upsert({
+                id_utilisateur: user.id,
+                token: token,
+                platform: 'android',
+                device_id: 'mobile',
+                updated_at: new Date().toISOString(),
+              });
+            if (error) {
+              console.log('❌ [FCM] Erreur enregistrement token:', error);
+            } else {
+              console.log('✅ [FCM] Token enregistré dans Supabase');
+            }
+          } else {
+            console.log('⚠️ [FCM] Utilisateur non connecté, token non enregistré');
+          }
+        } catch (e) {
+          console.warn('❌ [FCM] Erreur enregistrement token:', e);
+        }
+
+        // ✅ Notifications en arrière-plan (app fermée ou en arrière-plan)
+        messaging().onNotificationOpenedApp((remoteMessage) => {
+          console.log('🔔 [FCM] Notification ouverte (app en arrière-plan):', remoteMessage);
+          handleNotificationOpen(remoteMessage);
+        });
+
+        // ✅ Notifications au démarrage (app fermée)
+        const initialMessage = await messaging().getInitialNotification();
+        if (initialMessage) {
+          console.log('🔔 [FCM] Notification initiale:', initialMessage);
+          handleNotificationOpen(initialMessage);
+        }
+
+        // ✅ Notifications en foreground (app ouverte)
+        unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
+          console.log('📲 [FCM] 5. Notification foreground RECUE !!!!!');
+          console.log('📲 [FCM] Titre:', remoteMessage.notification?.title);
+          console.log('📲 [FCM] Corps:', remoteMessage.notification?.body);
+          console.log('📲 [FCM] Données:', JSON.stringify(remoteMessage.data, null, 2));
+
+          // ✅ Mettre à jour le badge
+          await fetchBadgeCount();
+
+          // ✅ Afficher une alerte dans l'app
+          showInAppNotification(remoteMessage);
+        });
+
+        // ✅ Charger le badge initial
+        await fetchBadgeCount();
+
+        // ✅ Écouter les changements de statut de l'app
+        appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+          if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+            console.log('📱 [FCM] App est revenue au premier plan');
+            fetchBadgeCount();
+          }
+          appState.current = nextAppState;
+        });
+
+        console.log('✅ [FCM] 6. Setup FCM terminé avec succès');
+
       } catch (err) {
-        console.log('FCM non disponible:', err);
+        console.log('❌ [FCM] Erreur:', err);
       }
     };
 
     setupFCM();
 
     return () => {
-      unsubscribeForeground?.();
+      if (unsubscribeForeground) {
+        unsubscribeForeground();
+      }
+      if (appStateSubscription) {
+        appStateSubscription.remove();
+      }
     };
   }, []);
 
-  // ─── GESTION DES LIENS PROFONDS (DEEP LINKING) MIS À JOUR ───
+  // ─── GESTION DES LIENS PROFONDS ───
   useEffect(() => {
     const handleDeepLink = async (url: string | null) => {
       console.log('🔗 Lien profond reçu:', url);
-      
-      if (!url) return;
 
-      // Format: retrouvonsles://dossier/ID
+      if (!url) {
+        console.log('⚠️ Aucun URL reçu');
+        setIsLoading(false);
+        return;
+      }
+
       let match = url.match(/retrouvonsles:\/\/dossier\/(.+)/);
       if (match && match[1]) {
         const dossierId = match[1];
-        console.log('📁 Navigation vers dossier (deep link):', dossierId);
-        setInitialRoute('VoirDossier');
-        setInitialParams({ id: dossierId });
+        console.log('📁 Navigation vers dossier (deep link personnalisé):', dossierId);
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: dossierId });
+        setIsLoading(false);
         return;
       }
 
-      // Format web: https://retrouvonsles.te-sea.com/dossier/ID
+      match = url.match(/retrouvonsles:\/\/alerte\/(.+)/);
+      if (match && match[1]) {
+        const alerteId = match[1];
+        console.log('📢 Navigation vers alerte (deep link personnalisé):', alerteId);
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: alerteId });
+        setIsLoading(false);
+        return;
+      }
+
+      match = url.match(/retrouvonsles\.te-sea\.com\/\?dossier=([^&]+)/);
+      if (match && match[1]) {
+        const dossierId = match[1];
+        console.log('📁 Navigation vers dossier (lien unique):', dossierId);
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: dossierId });
+        setIsLoading(false);
+        return;
+      }
+
       match = url.match(/retrouvonsles\.te-sea\.com\/dossier\/(.+)/);
       if (match && match[1]) {
         const dossierId = match[1];
-        console.log('📁 Navigation vers dossier (web link):', dossierId);
-        setInitialRoute('VoirDossier');
-        setInitialParams({ id: dossierId });
+        console.log('📁 Navigation vers dossier (lien web /dossier/):', dossierId);
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: dossierId });
+        setIsLoading(false);
         return;
       }
 
-      // Ancien format vercel (gardé pour compatibilité)
       match = url.match(/retrouvonsles\.vercel\.app\/disparition\/(.+)/);
       if (match && match[1]) {
         const dossierId = match[1];
-        console.log('📁 Navigation vers dossier (ancien lien):', dossierId);
-        setInitialRoute('VoirDossier');
-        setInitialParams({ id: dossierId });
+        console.log('📁 Navigation vers dossier (ancien lien vercel):', dossierId);
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: dossierId });
+        setIsLoading(false);
         return;
       }
+
+      match = url.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (match && match[1]) {
+        const dossierId = match[1];
+        console.log('📁 UUID extrait (fallback):', dossierId);
+        setInitialRoute('Alertes');
+        setInitialParams({ focus: dossierId });
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('📢 Redirection par défaut vers Alertes');
+      setInitialRoute('Alertes');
+      setIsLoading(false);
     };
 
     Linking.getInitialURL().then((url) => {
       handleDeepLink(url);
-      setIsLoading(false);
     });
 
     const subscription = Linking.addEventListener('url', ({ url }) => {
@@ -267,9 +666,9 @@ function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <SafeAreaProvider>
-          <NavigationContainer>
-            <Stack.Navigator 
-              initialRouteName={initialRoute || 'Splash'} 
+          <NavigationContainer ref={navigationRef}>
+            <Stack.Navigator
+              initialRouteName={initialRoute || 'Splash'}
               screenOptions={{ headerShown: false }}
             >
               {/* Auth */}
@@ -289,20 +688,21 @@ function App() {
               <Stack.Screen name="PolitiqueConfidentialite" component={PolitiqueConfidentialite} />
               <Stack.Screen name="Dons" component={DonsPage} />
               <Stack.Screen name="VoirDossier" component={VoirDossier} initialParams={initialParams} />
-              <Stack.Screen name="Alertes" component={Alertes} />
+              <Stack.Screen name="Alertes" component={Alertes} initialParams={initialParams} />
               <Stack.Screen name="VoirSignalement" component={VoirSignalement} />
 
-              {/* SOS - accessible uniquement via le bouton flottant */}
+              {/* SOS */}
               <Stack.Screen name="SOS" component={SOS} />
               <Stack.Screen name="ContactsUrgence" component={ContactsUrgence} />
 
-
-              {/* Messagerie - accessible uniquement via le bouton flottant */}
+              {/* Messagerie */}
               <Stack.Screen name="ConversationsList" component={ConversationsList} />
               <Stack.Screen name="ConversationDetail" component={ConversationDetail} />
+
+              {/* Pré-déclaration */}
               <Stack.Screen name="PreDeclarationList" component={PreDeclarationList} />
-            <Stack.Screen name="PreDeclarationDetail" component={PreDeclarationDetail} />
-            <Stack.Screen name="NouvellePreDeclaration" component={NouvellePreDeclaration} />
+              <Stack.Screen name="PreDeclarationDetail" component={PreDeclarationDetail} />
+              <Stack.Screen name="NouvellePreDeclaration" component={NouvellePreDeclaration} />
 
               {/* Pros */}
               <Stack.Screen name="homeAdmin">{(props) => <HomeAdmin {...props} level={6} />}</Stack.Screen>

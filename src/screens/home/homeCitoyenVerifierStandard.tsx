@@ -32,11 +32,29 @@ type Alerte = {
   niveau_urgence: string | null;
 };
 
+type DossierActif = {
+  id: string;
+  numero_dossier: string;
+  nom: string;
+  prenom: string;
+  age: number | null;
+  sexe: string | null;
+  dernier_lieu: string | null;
+  ville: string | null;
+  date_disparition: string | null;
+  description: string | null;
+  statut: string;
+  niveau_urgence: string | null;
+  photo_url: string | null;
+  nb_vues: number;
+  nombre_signalements: number;
+};
+
 type NotificationItem = {
   id: string;
   titre: string;
   message: string;
-  date_creation: string; // ✅ corrigé
+  date_creation: string;
   lue: boolean;
   type_notification: string;
   id_dossier?: string;
@@ -47,9 +65,9 @@ type NotificationItem = {
 // ─────────────────────────────────────────────────────────────
 function MenuPlus({ visible, onClose, navigation }: any) {
   const items = [
-    { icon: 'chatbubbles-outline', label: 'Messagerie', screen: 'ConversationsList', color: '#b45f06' },
     { icon: 'alert-circle-outline', label: 'SOS Urgence', screen: 'SOS', color: '#dc2626' },
-      { icon: 'document-text-outline', label: 'Pré-déclaration', screen: 'PreDeclarationList', color: '#3b82f6' }, 
+      { icon: 'document-text-outline', label: 'Pré-déclaration', screen: 'PreDeclarationList', color: '#3b82f6' }, // ✅ AJOUTÉ
+
   ];
 
   return (
@@ -155,120 +173,279 @@ const hS = StyleSheet.create({
   separator: { height: 1, backgroundColor: '#c6c6cd', marginTop: 8 },
 });
 
-// ─── SECTION URGENCE ───
-function SectionUrgence({ navigation }: any) {
+// ─── CARTE DOSSIER ACTIF (HORIZONTAL) ───
+function CarteDossierActif({ dossier, onPress }: { dossier: DossierActif; onPress: () => void }) {
+  const age = dossier.age ? `${dossier.age} ans` : 'Âge inconnu';
+  const lieu = dossier.dernier_lieu || dossier.ville || 'Lieu inconnu';
+  const formattedDate = dossier.date_disparition
+    ? new Date(dossier.date_disparition).toLocaleDateString('fr-FR', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      }).replace('.', '').replace(/\b(\w{3})/, (m) => m.charAt(0).toUpperCase() + m.slice(1))
+    : 'Date inconnue';
+
   return (
-    <View style={urgenceS.container}>
-      <Image
-        source={require('../../assets/onboarding/slide2.jpeg')}
-        style={urgenceS.bgImage}
-      />
-      <View style={urgenceS.overlay}>
-        <Text style={urgenceS.title}>Vigilance communautaire</Text>
-        <Text style={urgenceS.subtitle}>Chaque seconde compte. Aidez-nous à les renforcer chez vous.</Text>
-        <Text style={urgenceS.description}>RetrouvonsLes connecte les familles, les autorités et les personnes engagées pour la paix au Cameroun.</Text>
-        <TouchableOpacity style={urgenceS.btnPrimary} onPress={() => navigation.navigate('NouveauSignalement')}>
-          <Text style={urgenceS.btnPrimaryText}>Signaler une disparition</Text>
-          <Ionicons name="arrow-forward" size={16} color="#fff" />
-        </TouchableOpacity>
+    <TouchableOpacity style={carteDossierS.card} onPress={onPress} activeOpacity={0.8}>
+      <View style={carteDossierS.photoBox}>
+        {dossier.photo_url ? (
+          <Image source={{ uri: dossier.photo_url }} style={carteDossierS.photo} />
+        ) : (
+          <View style={carteDossierS.photoPlaceholder}>
+            <Ionicons name="person-outline" size={30} color="#cbd5e1" />
+          </View>
+        )}
       </View>
-    </View>
+      <View style={carteDossierS.infoBox}>
+        <Text style={carteDossierS.name} numberOfLines={1}>
+          {dossier.prenom} {dossier.nom}
+        </Text>
+        <Text style={carteDossierS.age}>{age}</Text>
+        <View style={carteDossierS.locationRow}>
+          <Ionicons name="location-outline" size={10} color="#76777d" />
+          <Text style={carteDossierS.location} numberOfLines={1}>{lieu}</Text>
+        </View>
+        <Text style={carteDossierS.date}>{formattedDate}</Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
-const urgenceS = StyleSheet.create({
-  container: { borderRadius: 16, overflow: 'hidden', marginBottom: 20, position: 'relative', height: 280 },
-  bgImage: { width: '100%', height: '100%', position: 'absolute' },
-  overlay: { backgroundColor: 'rgba(0,0,0,0.65)', padding: 20, height: '100%', justifyContent: 'center' },
-  title: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#f1f5f9', fontWeight: '600', marginBottom: 6 },
-  description: { fontSize: 12, color: '#cbd5e1', lineHeight: 18, marginBottom: 20 },
-  btnPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#b45f06', borderRadius: 30, paddingVertical: 12, paddingHorizontal: 20, alignSelf: 'flex-start' },
-  btnPrimaryText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+const carteDossierS = StyleSheet.create({
+  card: {
+    width: 180,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginRight: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  photoBox: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#f1f5f9',
+    overflow: 'hidden',
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  photoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+  },
+  infoBox: {
+    padding: 10,
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0b1c30',
+    marginBottom: 2,
+  },
+  age: {
+    fontSize: 11,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  location: {
+    fontSize: 10,
+    color: '#76777d',
+    flex: 1,
+  },
+  date: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
 });
 
-// ─── TYPES D'URGENCE ───
-function TypesUrgence() {
-  const types = [
-    { icon: 'warning-outline', label: 'Enlèvement', color: '#dc2626', bg: '#fee2e2' },
-    { icon: 'walk-outline', label: 'Fugue', color: '#f59e0b', bg: '#fef3c7' },
-    { icon: 'flash-outline', label: 'Danger Immédiat', color: '#ef4444', bg: '#fef2f2' },
-  ];
-
-  return (
-    <View style={typesS.container}>
-      <Text style={typesS.title}>Signaler par type</Text>
-      <View style={typesS.grid}>
-        {types.map((type, index) => (
-          <TouchableOpacity key={index} style={[typesS.card, { backgroundColor: type.bg }]}>
-            <View style={typesS.cardIcon}><Ionicons name={type.icon as any} size={24} color={type.color} /></View>
-            <Text style={[typesS.cardLabel, { color: type.color }]}>{type.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-const typesS = StyleSheet.create({
-  container: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
-  title: { fontSize: 14, fontWeight: '700', color: '#0b1c30', marginBottom: 12 },
-  grid: { flexDirection: 'row', gap: 12 },
-  card: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, gap: 8 },
-  cardIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
-  cardLabel: { fontSize: 12, fontWeight: '600' },
-});
-
-// ─── STATS SECTION ───
-function StatsCles() {
-  const [stats, setStats] = useState({ signalements: 0, personnesRetrouvees: 0, tempsMoyen: '--', partenaires: 0 });
+// ─── SECTION DOSSIERS ACTIFS (HORIZONTAL) ───
+function SectionDossiersActifs({ navigation }: { navigation: any }) {
+  const [dossiers, setDossiers] = useState<DossierActif[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const { count: signalementsCount } = await supabase.from('signalement').select('*', { count: 'exact', head: true }).eq('statut_validation', 'valide');
-        const { count: retrouvesCount } = await supabase.from('dossier_disparition').select('*', { count: 'exact', head: true }).in('statut_dossier', ['retrouve_vivant', 'retrouve_decede']);
-        const { count: partenairesCount } = await supabase.from('organisation').select('*', { count: 'exact', head: true }).eq('statut_actif', true);
-        setStats({ signalements: signalementsCount || 0, personnesRetrouvees: retrouvesCount || 0, tempsMoyen: '--', partenaires: partenairesCount || 0 });
-      } catch (error) { console.error('Erreur chargement stats:', error); }
-      finally { setLoading(false); }
-    };
-    fetchStats();
+  const fetchDossiersActifs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('dossier_disparition')
+        .select(`
+          id,
+          numero_dossier,
+          date_disparition,
+          lieu_disparition,
+          ville_disparition,
+          statut_dossier,
+          niveau_urgence,
+          nombre_signalements,
+          nombre_vues_fiche,
+          id_personne
+        `)
+        .not('statut_dossier', 'in', '("retrouve_vivant","retrouve_decede")')
+        .order('date_disparition', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        setDossiers([]);
+        return;
+      }
+
+      const personneIds = [...new Set(data.map((d: any) => d.id_personne).filter(Boolean))];
+      let personnesMap: Record<string, any> = {};
+
+      if (personneIds.length > 0) {
+        const { data: dataPersonnes } = await supabase
+          .from('personne')
+          .select(`id, nom, prenom, age_estime_min, age_estime_max, sexe, photo_principale`)
+          .in('id', personneIds);
+
+        if (dataPersonnes) {
+          (dataPersonnes ?? []).forEach((p: any) => { personnesMap[p.id] = p; });
+        }
+
+        const { data: dataPhotos } = await supabase
+          .from('photo')
+          .select(`id, url_cloudinary, est_principale, approuvee, id_personne`)
+          .in('id_personne', personneIds)
+          .eq('approuvee', true);
+
+        (dataPhotos ?? []).forEach((ph: any) => {
+          if (personnesMap[ph.id_personne]) {
+            if (!personnesMap[ph.id_personne]._photos) personnesMap[ph.id_personne]._photos = [];
+            personnesMap[ph.id_personne]._photos.push(ph);
+          }
+        });
+      }
+
+      const mapped: DossierActif[] = data.map((d: any) => {
+        const personne = personnesMap[d.id_personne] ?? null;
+        const photos: any[] = personne?._photos ?? [];
+        const photoUrl = personne?.photo_principale ??
+          photos.find((p: any) => p.est_principale)?.url_cloudinary ??
+          photos[0]?.url_cloudinary ??
+          null;
+        const age = personne?.age_estime_min ?? personne?.age_estime_max ?? null;
+
+        return {
+          id: d.id,
+          numero_dossier: d.numero_dossier ?? '',
+          nom: personne?.nom ?? '',
+          prenom: personne?.prenom ?? '',
+          age,
+          sexe: personne?.sexe ?? null,
+          dernier_lieu: d.lieu_disparition ?? null,
+          ville: d.ville_disparition ?? null,
+          date_disparition: d.date_disparition ?? null,
+          description: null,
+          statut: d.statut_dossier ?? 'en_cours',
+          niveau_urgence: d.niveau_urgence ?? null,
+          photo_url: photoUrl,
+          nb_vues: d.nombre_vues_fiche ?? 0,
+          nombre_signalements: d.nombre_signalements ?? 0,
+        };
+      });
+
+      setDossiers(mapped);
+    } catch (error) {
+      console.error('Erreur chargement dossiers actifs:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const statsData = [
-    { value: loading ? '...' : `${stats.signalements}+`, label: 'Signalements' },
-    { value: loading ? '...' : `${stats.personnesRetrouvees}`, label: 'Personnes retrouvées' },
-    { value: stats.tempsMoyen, label: 'Temps de réponse moyen' },
-    { value: loading ? '...' : `${stats.partenaires}`, label: 'Partenaires' },
-  ];
+  useFocusEffect(
+    useCallback(() => {
+      fetchDossiersActifs();
+    }, [fetchDossiersActifs])
+  );
+
+  if (loading) {
+    return (
+      <View style={dossiersActifsS.loadingContainer}>
+        <ActivityIndicator size="small" color="#b45f06" />
+        <Text style={dossiersActifsS.loadingText}>Chargement des alertes...</Text>
+      </View>
+    );
+  }
+
+  if (dossiers.length === 0) {
+    return null;
+  }
 
   return (
-    <View style={statsClesS.container}>
-      <View style={statsClesS.grid}>
-        {statsData.map((stat, index) => (
-          <View key={index} style={statsClesS.card}>
-            <Text style={statsClesS.value}>{stat.value}</Text>
-            <Text style={statsClesS.label}>{stat.label}</Text>
-          </View>
-        ))}
+    <View style={dossiersActifsS.container}>
+      <View style={dossiersActifsS.header}>
+        <Text style={dossiersActifsS.title}>Alertes en cours</Text>
+        <Text style={dossiersActifsS.subtitle}>Disparitions actives</Text>
       </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={dossiersActifsS.scrollContent}
+      >
+        {dossiers.map((dossier) => (
+          <CarteDossierActif
+            key={dossier.id}
+            dossier={dossier}
+            onPress={() => navigation.navigate('VoirDossier', { id: dossier.id })}
+          />
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
-const statsClesS = StyleSheet.create({
-  container: { backgroundColor: '#0b1c30', borderRadius: 16, padding: 20, marginBottom: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  card: { width: '48%', alignItems: 'center', paddingVertical: 12 },
-  value: { fontSize: 20, fontWeight: '800', color: '#b45f06', marginBottom: 4 },
-  label: { fontSize: 11, color: '#cbd5e1', textAlign: 'center' },
+const dossiersActifsS = StyleSheet.create({
+  container: {
+    marginBottom: 20,
+  },
+  header: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0b1c30',
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#76777d',
+    marginTop: 2,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  loadingContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 30,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 8,
+  },
 });
 
-// ─────────────────────────────────────────────────────────────
-// ACTIVITÉ RÉCENTE — depuis table notification
-// ─────────────────────────────────────────────────────────────
+// ─── ACTIVITÉ RÉCENTE ───
 function ActiviteRecente({ navigation }: { navigation: any }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,9 +457,9 @@ function ActiviteRecente({ navigation }: { navigation: any }) {
 
       const { data, error } = await supabase
         .from('notification')
-        .select('id, titre, message, date_creation, lue, type_notification, id_dossier') // ✅
+        .select('id, titre, message, date_creation, lue, type_notification, id_dossier')
         .eq('id_utilisateur', user.id)
-        .order('date_creation', { ascending: false }) // ✅
+        .order('date_creation', { ascending: false })
         .limit(5);
 
       if (error) throw error;
@@ -352,8 +529,8 @@ function ActiviteRecente({ navigation }: { navigation: any }) {
             <View style={activiteS.content}>
               <Text style={activiteS.itemTitle}>{item.titre}</Text>
               <Text style={activiteS.itemDesc} numberOfLines={2}>{item.message}</Text>
-              <Text style={activiteS.itemDate}>{formatDate(item.date_creation)}</Text>         
-                 </View>
+              <Text style={activiteS.itemDate}>{formatDate(item.date_creation)}</Text>
+            </View>
             {!item.lue && <View style={activiteS.unreadDot} />}
           </TouchableOpacity>
         );
@@ -375,269 +552,126 @@ const activiteS = StyleSheet.create({
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#1d4ed8', marginTop: 6 },
 });
 
-// ─── ALERTES RÉCENTES HEADER ───
-function AlertesRecentesHeader() {
+// ─── BOUTON DON (hors bloc) ───
+function BoutonDon({ navigation }: { navigation: any }) {
   return (
-    <View style={alertesHeaderS.container}>
-      <Text style={alertesHeaderS.title}>Alertes récentes</Text>
-      <Text style={alertesHeaderS.subtitle}>Disparitions signalées ces 30 derniers jours</Text>
-    </View>
+    <TouchableOpacity style={donS.btnDon} onPress={() => navigation.navigate('Dons')}>
+      <Ionicons name="heart-outline" size={18} color="#fff" />
+      <Text style={donS.btnDonText}>Faire un don à notre association</Text>
+    </TouchableOpacity>
   );
 }
 
-const alertesHeaderS = StyleSheet.create({
-  container: { marginBottom: 16 },
-  title: { fontSize: 18, fontWeight: '800', color: '#0b1c30' },
-  subtitle: { fontSize: 12, color: '#76777d', marginTop: 2 },
+const donS = StyleSheet.create({
+  btnDon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#b45f06',
+    borderRadius: 30,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  btnDonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
 });
 
-// ─── MODAL PARTAGE ───
-function ModalPartage({ visible, onClose, onWhatsApp, onFacebook, onAutre }: any) {
+// ─── BLOC UNIQUE : RETROUVONSLES CAMEROUN (fusion vigilance + footer) ───
+function BlocRetrouvonsLesCameroun() {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={partageStyles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={partageStyles.container}>
-          <View style={partageStyles.handle} />
-          <Text style={partageStyles.title}>Partager l'alerte</Text>
-          <Text style={partageStyles.subtitle}>Choisissez comment partager cette alerte de disparition</Text>
-          <TouchableOpacity style={partageStyles.option} onPress={onWhatsApp}>
-            <View style={[partageStyles.iconBox, { backgroundColor: '#dcfce7' }]}>
-              <Ionicons name="logo-whatsapp" size={26} color="#16a34a" />
-            </View>
-            <View style={partageStyles.optionTexts}>
-              <Text style={partageStyles.optionLabel}>WhatsApp</Text>
-              <Text style={partageStyles.optionDesc}>Photo + détails + lien dossier</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
-          </TouchableOpacity>
-          <TouchableOpacity style={partageStyles.option} onPress={onFacebook}>
-            <View style={[partageStyles.iconBox, { backgroundColor: '#dbeafe' }]}>
-              <Ionicons name="logo-facebook" size={26} color="#1d4ed8" />
-            </View>
-            <View style={partageStyles.optionTexts}>
-              <Text style={partageStyles.optionLabel}>Facebook</Text>
-              <Text style={partageStyles.optionDesc}>Lien smart (app ou site web)</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
-          </TouchableOpacity>
-          <TouchableOpacity style={partageStyles.option} onPress={onAutre}>
-            <View style={[partageStyles.iconBox, { backgroundColor: '#f1f5f9' }]}>
-              <Ionicons name="share-social-outline" size={26} color="#475569" />
-            </View>
-            <View style={partageStyles.optionTexts}>
-              <Text style={partageStyles.optionLabel}>Autre application</Text>
-              <Text style={partageStyles.optionDesc}>SMS, email, Telegram...</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
-          </TouchableOpacity>
-          <TouchableOpacity style={partageStyles.btnFermer} onPress={onClose}>
-            <Text style={partageStyles.btnFermerText}>Annuler</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-}
-
-const partageStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  container: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 44 },
-  handle: { width: 40, height: 4, backgroundColor: '#c6c6cd', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  title: { fontSize: 18, fontWeight: '800', color: '#0b1c30', marginBottom: 4 },
-  subtitle: { fontSize: 12, color: '#76777d', marginBottom: 20 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  iconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  optionTexts: { flex: 1 },
-  optionLabel: { fontSize: 15, fontWeight: '700', color: '#0b1c30' },
-  optionDesc: { fontSize: 12, color: '#76777d', marginTop: 2 },
-  btnFermer: { backgroundColor: '#f1f5f9', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
-  btnFermerText: { color: '#0b1c30', fontWeight: '600', fontSize: 14 },
-});
-
-// ─────────────────────────────────────────────────────────────
-// CARTE ALERTE
-// ─────────────────────────────────────────────────────────────
-function AlerteCard({ alerte, onPress, onReportSeen }: any) {
-  const [modalPartageVisible, setModalPartageVisible] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-
-  const ageMoyen = alerte.personne_age_estime_min && alerte.personne_age_estime_max
-    ? Math.floor((alerte.personne_age_estime_min + alerte.personne_age_estime_max) / 2)
-    : alerte.personne_age_estime_min || alerte.personne_age_estime_max || 0;
-
-  const diffHeures = Math.floor((Date.now() - new Date(alerte.date_diffusion).getTime()) / (1000 * 3600));
-  const dureeText = diffHeures < 24
-    ? `Disparu depuis ${diffHeures} heures`
-    : `Disparu depuis ${Math.floor(diffHeures / 24)} jours`;
-  const ageText = ageMoyen > 0 ? `${ageMoyen} ans` : 'Âge inconnu';
-
-  const universalLink = `${SITE_WEB}/dossier/${alerte.id_dossier}`;
-
-  const messageTexte =
-    `🔴 *ALERTE DISPARITION* 🔴\n\n` +
-    `👤 *${alerte.personne_prenom} ${alerte.personne_nom}*\n` +
-    `🎂 *Âge :* ${ageMoyen > 0 ? `${ageMoyen} ans` : 'Inconnu'}\n` +
-    `📍 *Dernier lieu vu :* ${alerte.lieu_disparition || 'Inconnu'}\n` +
-    `📅 *Date :* ${new Date(alerte.date_diffusion).toLocaleDateString('fr-FR')}\n\n` +
-    `Si vous avez des informations, cliquez sur le lien ci-dessous :\n` +
-    `👉 ${universalLink}\n\n` +
-    `_(Ouvre l'application RetrouvonsLes si installée, sinon le site web)_\n\n` +
-    `🤝 _RetrouvonsLes — Ensemble, retrouvons-les_`;
-
-  const downloadPhoto = async (url: string): Promise<string | null> => {
-    try {
-      setDownloading(true);
-      const ext = url.split('?')[0].split('.').pop() ?? 'jpg';
-      const localPath = `${RNFS.CachesDirectoryPath}/alerte_${alerte.id_dossier}.${ext}`;
-      const exists = await RNFS.exists(localPath);
-      if (!exists) {
-        await RNFS.downloadFile({ fromUrl: url, toFile: localPath }).promise;
-      }
-      return localPath;
-    } catch {
-      return null;
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const handleWhatsApp = async () => {
-    setModalPartageVisible(false);
-    try {
-      let fileUri: string | null = null;
-      if (alerte.personne_photo_principale) {
-        const localPath = await downloadPhoto(alerte.personne_photo_principale);
-        if (localPath) {
-          fileUri = Platform.OS === 'android' ? `file://${localPath}` : localPath;
-        }
-      }
-      await Share.share(
-        Platform.OS === 'android'
-          ? { title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte }
-          : { title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte, url: fileUri || universalLink }
-      );
-    } catch (error) {
-      Alert.alert('Erreur', "Impossible d'ouvrir le partage.");
-    }
-  };
-
-  const handleFacebook = async () => {
-    setModalPartageVisible(false);
-    try {
-      const fbNative = `fb://share?link=${encodeURIComponent(universalLink)}`;
-      const supported = await Linking.canOpenURL(fbNative);
-      if (supported) {
-        await Linking.openURL(fbNative);
-      } else {
-        await Linking.openURL(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(universalLink)}&quote=${encodeURIComponent(`🔴 ALERTE DISPARITION — ${alerte.personne_prenom} ${alerte.personne_nom}`)}`);
-      }
-    } catch {
-      Alert.alert('Erreur', "Impossible d'ouvrir Facebook.");
-    }
-  };
-
-  const handleAutre = async () => {
-    setModalPartageVisible(false);
-    try {
-      let fileUri: string | null = null;
-      if (alerte.personne_photo_principale) {
-        const localPath = await downloadPhoto(alerte.personne_photo_principale);
-        if (localPath) {
-          fileUri = Platform.OS === 'android' ? `file://${localPath}` : localPath;
-        }
-      }
-      await Share.share(
-        Platform.OS === 'ios' && fileUri
-          ? { title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte, url: fileUri }
-          : { title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte }
-      );
-    } catch (error) {
-      console.error('Erreur partage:', error);
-    }
-  };
-
-  return (
-    <View style={cardStyles.card}>
-      <TouchableOpacity onPress={onPress}>
-        <View style={cardStyles.photoContainer}>
-          {alerte.personne_photo_principale ? (
-            <Image source={{ uri: alerte.personne_photo_principale }} style={cardStyles.photo} />
-          ) : (
-            <View style={cardStyles.photoPlaceholder}>
-              <Ionicons name="person-outline" size={50} color="#76777d" />
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onPress}>
-        <View style={cardStyles.infoContainer}>
-          <Text style={cardStyles.name}>{alerte.personne_prenom} {alerte.personne_nom}</Text>
-          <Text style={cardStyles.details}>{ageText}</Text>
-          <View style={cardStyles.locationRow}>
-            <Ionicons name="location-outline" size={14} color="#76777d" />
-            <Text style={cardStyles.location}>{alerte.lieu_disparition || 'Lieu inconnu'}</Text>
-          </View>
-          <Text style={cardStyles.duration}>{dureeText}</Text>
-        </View>
-      </TouchableOpacity>
-      <View style={cardStyles.buttonRow}>
-        <TouchableOpacity style={cardStyles.reportBtn} onPress={onReportSeen}>
-          <Text style={cardStyles.reportBtnText}>SIGNALER VU</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={cardStyles.shareBtn} onPress={() => setModalPartageVisible(true)}>
-          {downloading
-            ? <ActivityIndicator size="small" color="#b45f06" />
-            : <Ionicons name="share-social-outline" size={16} color="#b45f06" />}
-          <Text style={cardStyles.shareBtnText}>{downloading ? 'CHARGEMENT...' : 'PARTAGER'}</Text>
-        </TouchableOpacity>
-      </View>
-      <ModalPartage
-        visible={modalPartageVisible}
-        onClose={() => setModalPartageVisible(false)}
-        onWhatsApp={handleWhatsApp}
-        onFacebook={handleFacebook}
-        onAutre={handleAutre}
+    <View style={blocS.container}>
+      <Image
+        source={require('../../assets/onboarding/slide2.jpeg')}
+        style={blocS.bgImage}
       />
+      <View style={blocS.overlay}>
+        {/* Titre unique */}
+        <Text style={blocS.mainTitle}>RetrouvonsLes Cameroun</Text>
+
+        {/* Texte vigilance */}
+        <Text style={blocS.vigilanceSubtitle}>Chaque seconde compte. Aidez-nous à les renforcer chez vous.</Text>
+        <Text style={blocS.vigilanceDescription}>
+          RetrouvonsLes connecte les familles, les autorités et les personnes engagées pour la paix au Cameroun.
+        </Text>
+
+        {/* Séparateur */}
+        <View style={blocS.separator} />
+
+        {/* Texte association */}
+        <Text style={blocS.associationText}>
+          Cherchant une solution pour améliorer votre vie quotidienne, nous vous invitons à participer activement à ce projet d'aide sociale.
+        </Text>
+
+        {/* Copyright */}
+        <Text style={blocS.copyright}>© 2024 RetrouvonsLes Cameroun - Tous droits réservés</Text>
+      </View>
     </View>
   );
 }
 
-const cardStyles = StyleSheet.create({
-  card: { backgroundColor: '#ffffff', borderRadius: 12, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#c6c6cd' },
-  photoContainer: { height: 200, backgroundColor: '#d3e4fe' },
-  photo: { width: '100%', height: '100%' },
-  photoPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#e5eeff' },
-  infoContainer: { padding: 16 },
-  name: { fontSize: 20, fontWeight: '700', color: '#0b1c30', marginBottom: 4 },
-  details: { fontSize: 14, color: '#45464d', marginBottom: 12 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  location: { fontSize: 13, color: '#45464d' },
-  duration: { fontSize: 12, color: '#76777d', marginBottom: 16 },
-  buttonRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
-  reportBtn: { flex: 1, backgroundColor: '#1e3a5f', paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
-  reportBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
-  shareBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: '#b45f06', backgroundColor: '#fff' },
-  shareBtnText: { color: '#b45f06', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
+const blocS = StyleSheet.create({
+  container: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 20,
+  },
+  bgImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  overlay: {
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    padding: 20,
+  },
+  mainTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  vigilanceSubtitle: {
+    fontSize: 14,
+    color: '#f1f5f9',
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  vigilanceDescription: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginVertical: 16,
+  },
+  associationText: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  copyright: {
+    fontSize: 10,
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
 });
 
-// ─── SECTION PERSONNES DISPARUES ───
-function PersonnesDisparues() {
-  return (
-    <View style={personnesS.container}>
-      <Text style={personnesS.title}>Personnes disparues</Text>
-      <Text style={personnesS.description}>Vos informations peuvent aider à retrouver vos proches. Votre famille est en danger.</Text>
-    </View>
-  );
-}
-
-const personnesS = StyleSheet.create({
-  container: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
-  title: { fontSize: 16, fontWeight: '800', color: '#0b1c30', marginBottom: 8 },
-  description: { fontSize: 13, color: '#64748b', lineHeight: 18 },
-});
-
-// ─── PRÉVENTION ET BONNES PRATIQUES ───
-function SectionPartenaires() {
+// ─── SECTION PRÉVENTION ET BONNES PRATIQUES ───
+function SectionPrevention() {
   const conseils = [
     {
       icon: 'warning-outline',
@@ -684,51 +718,6 @@ const preventionS = StyleSheet.create({
   cardDesc: { fontSize: 12, color: '#64748b', lineHeight: 18 },
 });
 
-// ─── SECTION RESEAU SOCIAL ───
-function SectionReseauSocial({ navigation }: any) {
-  return (
-    <View style={reseauS.container}>
-      <View style={reseauS.iconBox}><Ionicons name="people-outline" size={28} color="#b45f06" /></View>
-      <Text style={reseauS.title}>Enrichir la rencontre & les réseaux</Text>
-      <Text style={reseauS.description}>Créez votre propre réseau social pour partager vos idées et vos expériences.</Text>
-      <TouchableOpacity style={reseauS.btn}><Text style={reseauS.btnText}>Rejoindre le Réseau →</Text></TouchableOpacity>
-      <TouchableOpacity style={reseauS.btnDon} onPress={() => navigation.navigate('Dons')}>
-        <Ionicons name="heart-outline" size={16} color="#fff" />
-        <Text style={reseauS.btnDonText}>Faire un don à notre association</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const reseauS = StyleSheet.create({
-  container: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center' },
-  iconBox: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fefce8', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 16, fontWeight: '800', color: '#0b1c30', textAlign: 'center', marginBottom: 8 },
-  description: { fontSize: 12, color: '#64748b', textAlign: 'center', marginBottom: 16, lineHeight: 18 },
-  btn: { marginBottom: 12 },
-  btnText: { fontSize: 13, fontWeight: '600', color: '#b45f06' },
-  btnDon: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0b1c30', borderRadius: 30, paddingVertical: 10, paddingHorizontal: 20 },
-  btnDonText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-});
-
-// ─── FOOTER ───
-function Footer() {
-  return (
-    <View style={footerS.container}>
-      <Text style={footerS.title}>RetrouvonsLes Cameroun</Text>
-      <Text style={footerS.description}>Cherchant une solution pour améliorer votre vie quotidienne, nous vous invitons à participer activement à ce projet d'aide sociale.</Text>
-      <Text style={footerS.copyright}>© 2024 RetrouvonsLes Cameroun - Tous droits réservés</Text>
-    </View>
-  );
-}
-
-const footerS = StyleSheet.create({
-  container: { backgroundColor: '#0b1c30', borderRadius: 16, padding: 20, marginBottom: 20, alignItems: 'center' },
-  title: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  description: { fontSize: 12, color: '#cbd5e1', textAlign: 'center', lineHeight: 18, marginBottom: 12 },
-  copyright: { fontSize: 10, color: '#94a3b8', textAlign: 'center' },
-});
-
 // ─────────────────────────────────────────────────────────────
 // ÉCRAN PRINCIPAL HOME
 // ─────────────────────────────────────────────────────────────
@@ -736,7 +725,6 @@ export default function Home({ navigation: navProp }: any) {
   const navigation = useNavigation<StackNavigationProp<any>>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [alertes, setAlertes] = useState<Alerte[]>([]);
   const [alertesCount, setAlertesCount] = useState(0);
   const [initiales, setInitiales] = useState('?');
   const [verifie, setVerifie] = useState(false);
@@ -746,15 +734,6 @@ export default function Home({ navigation: navProp }: any) {
     const p = (prenom?.trim() || '')[0]?.toUpperCase() || '';
     const n = (nom?.trim() || '')[0]?.toUpperCase() || '';
     return (p + n) || '?';
-  };
-
-  const handleReportSeen = (alerte: Alerte) => {
-    navigation.navigate('VoirSignalement', {
-      dossierId: alerte.id_dossier,
-      nomPersonne: alerte.personne_nom,
-      prenomPersonne: alerte.personne_prenom,
-      modeSignalerVu: true,
-    });
   };
 
   const fetchData = useCallback(async () => {
@@ -772,54 +751,6 @@ export default function Home({ navigation: navProp }: any) {
       if (!profileError && u) {
         setInitiales(getInitiales(u.prenom, u.nom));
         setVerifie(u.statut_compte === 'actif');
-      }
-
-      const trente_jours_ago = new Date();
-      trente_jours_ago.setDate(trente_jours_ago.getDate() - 30);
-
-      const { data: alertesData, error: alertesError } = await supabase
-        .from('alerte')
-        .select(`
-          id, titre, message_court, statut_alerte, date_diffusion, rayon_km, id_dossier,
-          dossier_disparition ( id, lieu_disparition, statut_dossier, personne ( nom, prenom, age_estime_min, age_estime_max, taille_cm, poids_kg, photo_principale ) )
-        `)
-        .eq('statut_alerte', 'en_cours')
-        .eq('validee', true)
-        .gte('date_diffusion', trente_jours_ago.toISOString())
-        .order('date_diffusion', { ascending: false })
-        .limit(5);
-
-      if (!alertesError && alertesData) {
-        const formatted: Alerte[] = alertesData
-          .filter((item: any) => {
-            const statut = item.dossier_disparition?.statut_dossier;
-            return statut !== 'retrouve_vivant' && statut !== 'retrouve_decede';
-          })
-          .map((item: any) => {
-            const dossier = item.dossier_disparition;
-            const personne = dossier?.personne || {};
-            return {
-              id: item.id,
-              id_dossier: dossier?.id || item.id_dossier,
-              titre: item.titre || '',
-              message_court: item.message_court || '',
-              statut_alerte: item.statut_alerte,
-              date_diffusion: item.date_diffusion,
-              rayon_km: item.rayon_km || 50,
-              personne_nom: personne.nom || 'Inconnu',
-              personne_prenom: personne.prenom || 'Inconnu',
-              personne_age_estime_min: personne.age_estime_min || 0,
-              personne_age_estime_max: personne.age_estime_max || 0,
-              personne_taille_cm: personne.taille_cm || null,
-              personne_poids_kg: personne.poids_kg || null,
-              personne_photo_principale: personne.photo_principale || null,
-              lieu_disparition: dossier?.lieu_disparition || 'Lieu inconnu',
-              niveau_urgence: null,
-            };
-          });
-        setAlertes(formatted);
-      } else {
-        setAlertes([]);
       }
 
       const { count: notifCount } = await supabase
@@ -862,41 +793,22 @@ export default function Home({ navigation: navProp }: any) {
           />
         }
       >
-        <SectionUrgence navigation={navigation} />
-        <TypesUrgence />
-        <StatsCles />
+        {/* Dossiers actifs en haut */}
+        <SectionDossiersActifs navigation={navigation} />
+
+        {/* Bouton Don (hors bloc) */}
+        <BoutonDon navigation={navigation} />
+
+        {/* Activité récente (une seule fois) */}
         <ActiviteRecente navigation={navigation} />
-        <AlertesRecentesHeader />
-        {loading ? (
-          <ActivityIndicator size="large" color="#b45f06" style={{ paddingVertical: 20 }} />
-        ) : alertes.length === 0 ? (
-          <View style={styles.emptyAlertes}>
-            <Text style={styles.emptyAlertesText}>Aucune alerte ces 30 derniers jours</Text>
-          </View>
-        ) : (
-          alertes.map((alerte) => (
-            <AlerteCard
-              key={alerte.id}
-              alerte={alerte}
-              onPress={() => navigation.navigate('VoirDossier', { id: alerte.id_dossier })}
-              onReportSeen={() => handleReportSeen(alerte)}
-            />
-          ))
-        )}
-        <TouchableOpacity
-          style={styles.voirToutesBtn}
-          onPress={() => navigation.navigate('Alertes')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="notifications-outline" size={18} color="#0b1c30" />
-          <Text style={styles.voirToutesBtnText}>Voir toutes les alertes en cours</Text>
-          <Ionicons name="arrow-forward" size={16} color="#0b1c30" />
-        </TouchableOpacity>
-        <PersonnesDisparues />
-        <SectionPartenaires />
-        <SectionReseauSocial navigation={navigation} />
-        <Footer />
+
+        {/* Prévention et bonnes pratiques */}
+        <SectionPrevention />
+
+        {/* Bloc unique RetrouvonsLes Cameroun (fusion vigilance + footer) */}
+        <BlocRetrouvonsLesCameroun />
       </ScrollView>
+
       <TouchableOpacity
         style={styles.floatingButton}
         onPress={() => setMenuVisible(true)}
@@ -913,8 +825,4 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9ff' },
   scrollContent: { padding: 16, paddingBottom: 80 },
   floatingButton: { position: 'absolute', bottom: 30, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#b45f06', justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#b45f06', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, zIndex: 999 },
-  emptyAlertes: { backgroundColor: '#fff', borderRadius: 12, padding: 30, alignItems: 'center', marginBottom: 16 },
-  emptyAlertesText: { fontSize: 13, color: '#94a3b8' },
-  voirToutesBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 20, marginBottom: 20, borderWidth: 1.5, borderColor: '#0b1c30' },
-  voirToutesBtnText: { fontSize: 14, fontWeight: '700', color: '#0b1c30', flex: 1, textAlign: 'center' },
 });

@@ -110,7 +110,6 @@ export default function SignalementPage({ navigation }: any) {
 
   const actifsCount = signalements.filter(s => s.statut_validation === 'en_attente' || s.statut_validation === 'en_verification').length;
   const valideCount = signalements.filter(s => s.statut_validation === 'valide').length;
-  const rejeteCount = signalements.filter(s => s.statut_validation === 'invalide').length;
   const enAttenteCount = signalements.filter(s => s.statut_validation === 'en_attente' || s.statut_validation === 'en_verification').length;
 
   return (
@@ -156,6 +155,7 @@ export default function SignalementPage({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {/* ✅ Stats : CAS ACTIFS, VALIDÉS, EN ATTENTE (supprimé REJETÉS) */}
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
           <Text style={styles.statNumber}>{signalements.length}</Text>
@@ -165,11 +165,6 @@ export default function SignalementPage({ navigation }: any) {
         <View style={styles.statBox}>
           <Text style={styles.statNumber}>{valideCount}</Text>
           <Text style={styles.statLabel}>VALIDÉS</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{rejeteCount}</Text>
-          <Text style={styles.statLabel}>REJETÉS</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statBox}>
@@ -225,11 +220,15 @@ export default function SignalementPage({ navigation }: any) {
                     <Text style={styles.delaiText}>{delaiText}</Text>
                   </View>
 
+                  {/* ✅ REDIRECTION VERS VoirDossier si id_dossier existe */}
                   <TouchableOpacity 
                     style={styles.cardContent}
                     activeOpacity={0.9}
                     onPress={() => {
-                      if (!estValide) {
+                      if (estValide) return;
+                      if (s.id_dossier) {
+                        navigation.navigate('VoirDossier', { id: s.id_dossier });
+                      } else {
                         navigation.navigate('VoirSignalement', { signalementId: s.id });
                       }
                     }}
@@ -279,10 +278,18 @@ export default function SignalementPage({ navigation }: any) {
                     <View style={styles.cardButtons}>
                       <TouchableOpacity
                         style={styles.btnVoir}
-                        onPress={() => navigation.navigate('VoirSignalement', { signalementId: s.id })}
+                        onPress={() => {
+                          if (s.id_dossier) {
+                            navigation.navigate('VoirDossier', { id: s.id_dossier });
+                          } else {
+                            navigation.navigate('VoirSignalement', { signalementId: s.id });
+                          }
+                        }}
                       >
                         <Ionicons name="eye-outline" size={14} color="#FFF" />
-                        <Text style={styles.btnVoirText}>Voir le dossier</Text>
+                        <Text style={styles.btnVoirText}>
+                          {s.id_dossier ? 'Voir le dossier' : 'Voir le signalement'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   )}

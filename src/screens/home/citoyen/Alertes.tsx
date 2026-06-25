@@ -1,16 +1,26 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
-  StyleSheet, View, Text, ScrollView, SafeAreaView,
-  TouchableOpacity, StatusBar, ActivityIndicator,
-  RefreshControl, Image, Alert as RNAlert, Platform,
-  Modal, Share, Linking,
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  SafeAreaView,
+  TouchableOpacity,
+  StatusBar,
+  ActivityIndicator,
+  RefreshControl,
+  Image,
+  Alert as RNAlert,
+  Platform,
+  Share,
+  Clipboard,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import RNFS from 'react-native-fs';
 import { supabase } from '../../../services/supabase';
 
-const SITE_WEB = 'https://retrouvonsles.vercel.app';
+const SITE_WEB = 'https://retrouvonsles.te-sea.com';
 
 // ─── TYPES ───
 type AlerteItem = {
@@ -38,11 +48,24 @@ function getDureeTexte(dateStr: string): string {
   return `Disparu depuis ${diffJours} jour${diffJours > 1 ? 's' : ''}`;
 }
 
+// ✅ VERSION CORRIGÉE DE getAgeTexte
 function getAgeTexte(min: number, max: number): string {
-  if (min && max) return `${Math.floor((min + max) / 2)} ans`;
-  if (min) return `${min} ans`;
-  if (max) return `${max} ans`;
-  return 'Âge inconnu';
+  // Si l'âge est 0 ou non défini
+  if (min === 0 && max === 0) return 'Âge non renseigné';
+  
+  // Âge exact (min et max identiques)
+  if (min === max && min > 0) return `${min} ans`;
+  
+  // Âge estimé (min et max différents)
+  if (min > 0 && max > 0) return `${Math.floor((min + max) / 2)} ans (estimé)`;
+  
+  // Seulement min
+  if (min > 0) return `${min} ans`;
+  
+  // Seulement max
+  if (max > 0) return `${max} ans`;
+  
+  return 'Âge non renseigné';
 }
 
 // ─── BADGE URGENCE ───
@@ -50,8 +73,8 @@ function BadgeUrgence({ niveau }: { niveau: string | null }) {
   if (!niveau) return null;
   const map: Record<string, { label: string; bg: string; color: string }> = {
     critique: { label: '🔴 CRITIQUE', bg: '#fee2e2', color: '#dc2626' },
-    urgent:   { label: '🟠 URGENT',   bg: '#ffedd5', color: '#ea580c' },
-    normal:   { label: 'NORMAL',      bg: '#fef3c7', color: '#d97706' },
+    urgent: { label: '🟠 URGENT', bg: '#ffedd5', color: '#ea580c' },
+    normal: { label: 'NORMAL', bg: '#fef3c7', color: '#d97706' },
   };
   const u = map[niveau] ?? { label: niveau.toUpperCase(), bg: '#f1f5f9', color: '#64748b' };
   return (
@@ -62,94 +85,30 @@ function BadgeUrgence({ niveau }: { niveau: string | null }) {
 }
 const badgeS = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 6 },
-  text:  { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
-});
-
-// ─── MODAL PARTAGE ───
-function ModalPartage({ visible, onClose, onWhatsApp, onFacebook, onAutre }: any) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={mS.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={mS.container}>
-          <View style={mS.handle} />
-          <Text style={mS.title}>Partager l'alerte</Text>
-          <Text style={mS.subtitle}>Choisissez comment partager cette alerte de disparition</Text>
-
-          <TouchableOpacity style={mS.option} onPress={onWhatsApp} activeOpacity={0.8}>
-            <View style={[mS.iconBox, { backgroundColor: '#dcfce7' }]}>
-              <Ionicons name="logo-whatsapp" size={26} color="#16a34a" />
-            </View>
-            <View style={mS.optionTexts}>
-              <Text style={mS.optionLabel}>WhatsApp</Text>
-              <Text style={mS.optionDesc}>Partager le message + lien vers le dossier</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={mS.option} onPress={onFacebook} activeOpacity={0.8}>
-            <View style={[mS.iconBox, { backgroundColor: '#dbeafe' }]}>
-              <Ionicons name="logo-facebook" size={26} color="#1d4ed8" />
-            </View>
-            <View style={mS.optionTexts}>
-              <Text style={mS.optionLabel}>Facebook</Text>
-              <Text style={mS.optionDesc}>Partager le lien du dossier sur Facebook</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={mS.option} onPress={onAutre} activeOpacity={0.8}>
-            <View style={[mS.iconBox, { backgroundColor: '#f1f5f9' }]}>
-              <Ionicons name="share-social-outline" size={26} color="#475569" />
-            </View>
-            <View style={mS.optionTexts}>
-              <Text style={mS.optionLabel}>Autre application</Text>
-              <Text style={mS.optionDesc}>SMS, email, Telegram...</Text>
-            </View>
-            <Ionicons name="chevron-forward-outline" size={18} color="#94a3b8" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={mS.btnFermer} onPress={onClose}>
-            <Text style={mS.btnFermerText}>Annuler</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-}
-
-const mS = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  container: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 44 },
-  handle: { width: 40, height: 4, backgroundColor: '#c6c6cd', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  title: { fontSize: 18, fontWeight: '800', color: '#0b1c30', marginBottom: 4 },
-  subtitle: { fontSize: 12, color: '#76777d', marginBottom: 20 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  iconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  optionTexts: { flex: 1 },
-  optionLabel: { fontSize: 15, fontWeight: '700', color: '#0b1c30' },
-  optionDesc: { fontSize: 12, color: '#76777d', marginTop: 2 },
-  btnFermer: { backgroundColor: '#f1f5f9', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
-  btnFermerText: { color: '#0b1c30', fontWeight: '600', fontSize: 14 },
+  text: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
 });
 
 // ─── CARTE ALERTE ───
-function AlerteCard({ alerte, navigation }: { alerte: AlerteItem; navigation: any }) {
-  const [modalVisible, setModalVisible] = useState(false);
+function AlerteCard({ alerte, navigation, isHighlighted }: any) {
   const [downloading, setDownloading] = useState(false);
 
   const dureeText = getDureeTexte(alerte.date_diffusion);
   const ageText = getAgeTexte(alerte.personne_age_estime_min, alerte.personne_age_estime_max);
-  const lienDossier = `${SITE_WEB}/dossier/${alerte.id_dossier}`;
+  
+  // ✅ LIEN UNIQUE
+  const lienUnique = `${SITE_WEB}/?dossier=${alerte.id_dossier}`;
 
+  // ✅ MESSAGE PROPRE ET CONCIS (sans phrases inutiles)
   const messageTexte =
-    `🔴 *ALERTE DISPARITION* 🔴\n\n` +
+    `🔴 *ALERTE DISPARITION*\n\n` +
     `👤 *${alerte.personne_prenom} ${alerte.personne_nom}*\n` +
-    `🎂 *Âge :* ${ageText}\n` +
-    `📍 *Dernier lieu vu :* ${alerte.lieu_disparition || 'Inconnu'}\n` +
-    `📅 *Disparu(e) le :* ${new Date(alerte.date_diffusion).toLocaleDateString('fr-FR')}\n\n` +
-    `🔗 *Voir le dossier complet et signaler une information :*\n${lienDossier}\n\n` +
-    `🤝 _RetrouvonsLes — Ensemble, retrouvons-les_`;
+    `🎂 ${ageText}\n` +
+    `📍 ${alerte.lieu_disparition || 'Lieu inconnu'}\n` +
+    `📅 ${new Date(alerte.date_diffusion).toLocaleDateString('fr-FR')}\n\n` +
+    `🔗 ${lienUnique}\n\n` +
+    `🤝 RetrouvonsLes`;
 
+  // ✅ Télécharger la photo
   const downloadPhoto = async (url: string): Promise<string | null> => {
     try {
       setDownloading(true);
@@ -168,62 +127,47 @@ function AlerteCard({ alerte, navigation }: { alerte: AlerteItem; navigation: an
     }
   };
 
-  const handleWhatsApp = async () => {
-    setModalVisible(false);
+  // ✅ Partager via la fenêtre native
+  const handlePartager = async () => {
     try {
-      if (alerte.personne_photo_principale) {
+      setDownloading(true);
+
+      let imagePath = null;
+      if (alerte.personne_photo_principale && Platform.OS === 'ios') {
         const localPath = await downloadPhoto(alerte.personne_photo_principale);
         if (localPath) {
-          const fileUri = Platform.OS === 'android' ? `file://${localPath}` : localPath;
-          await Share.share({ title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte, url: fileUri });
-          return;
+          imagePath = localPath;
         }
       }
-      const url = `whatsapp://send?text=${encodeURIComponent(messageTexte)}`;
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(messageTexte)}`);
+
+      const shareOptions: any = {
+        title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`,
+        message: messageTexte,
+      };
+
+      if (imagePath && Platform.OS === 'ios') {
+        shareOptions.url = imagePath;
       }
-    } catch {
-      RNAlert.alert('Erreur', "Impossible d'ouvrir WhatsApp.");
+
+      await Share.share(shareOptions);
+    } catch (error) {
+      console.error('Erreur partage:', error);
+      RNAlert.alert('Erreur', 'Impossible de partager');
+    } finally {
+      setDownloading(false);
     }
   };
 
-  const handleFacebook = async () => {
-    setModalVisible(false);
+  // ✅ Copier le lien
+  const handleCopyLink = async () => {
     try {
-      const urlNative = `fb://share?link=${encodeURIComponent(lienDossier)}`;
-      const supported = await Linking.canOpenURL(urlNative);
-      if (supported) {
-        await Linking.openURL(urlNative);
-      } else {
-        await Linking.openURL(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(lienDossier)}&quote=${encodeURIComponent(`🔴 ALERTE DISPARITION — ${alerte.personne_prenom} ${alerte.personne_nom}`)}`);
-      }
-    } catch {
-      RNAlert.alert('Erreur', "Impossible d'ouvrir Facebook.");
+      await Clipboard.setString(lienUnique);
+      RNAlert.alert('✅ Lien copié', 'Le lien a été copié dans le presse-papiers');
+    } catch (error) {
+      RNAlert.alert('Erreur', 'Impossible de copier le lien');
     }
   };
 
-  const handleAutre = async () => {
-    setModalVisible(false);
-    try {
-      if (alerte.personne_photo_principale) {
-        const localPath = await downloadPhoto(alerte.personne_photo_principale);
-        if (localPath) {
-          const fileUri = Platform.OS === 'android' ? `file://${localPath}` : localPath;
-          await Share.share({ title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte, url: fileUri });
-          return;
-        }
-      }
-      await Share.share({ title: `Disparition — ${alerte.personne_prenom} ${alerte.personne_nom}`, message: messageTexte, url: lienDossier });
-    } catch (err) {
-      console.error('Erreur partage:', err);
-    }
-  };
-
-  // ── Signaler vu : redirige vers VoirSignalement ──
   const handleSignalerVu = () => {
     navigation.navigate('VoirSignalement', {
       signalementId: alerte.id,
@@ -233,16 +177,17 @@ function AlerteCard({ alerte, navigation }: { alerte: AlerteItem; navigation: an
   };
 
   return (
-    <View style={cardS.card}>
-      {/* Badge urgence */}
+    <View style={[cardS.card, isHighlighted && cardS.cardHighlighted]}>
       {alerte.niveau_urgence && alerte.niveau_urgence !== 'normal' && (
         <View style={cardS.urgenceBanner}>
           <BadgeUrgence niveau={alerte.niveau_urgence} />
         </View>
       )}
 
-      {/* Photo */}
-      <TouchableOpacity onPress={() => navigation.navigate('VoirDossier', { id: alerte.id_dossier })} activeOpacity={0.9}>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('VoirDossier', { id: alerte.id_dossier })}
+        activeOpacity={0.9}
+      >
         <View style={cardS.photoContainer}>
           {alerte.personne_photo_principale ? (
             <Image source={{ uri: alerte.personne_photo_principale }} style={cardS.photo} resizeMode="cover" />
@@ -254,8 +199,10 @@ function AlerteCard({ alerte, navigation }: { alerte: AlerteItem; navigation: an
         </View>
       </TouchableOpacity>
 
-      {/* Infos */}
-      <TouchableOpacity onPress={() => navigation.navigate('VoirDossier', { id: alerte.id_dossier })} activeOpacity={0.7}>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('VoirDossier', { id: alerte.id_dossier })}
+        activeOpacity={0.7}
+      >
         <View style={cardS.infoContainer}>
           <Text style={cardS.name}>{alerte.personne_prenom} {alerte.personne_nom}</Text>
           <Text style={cardS.details}>{ageText}</Text>
@@ -267,58 +214,107 @@ function AlerteCard({ alerte, navigation }: { alerte: AlerteItem; navigation: an
         </View>
       </TouchableOpacity>
 
-      {/* Boutons */}
       <View style={cardS.buttonRow}>
         <TouchableOpacity style={cardS.reportBtn} onPress={handleSignalerVu} activeOpacity={0.85}>
           <Ionicons name="eye-outline" size={14} color="#fff" />
           <Text style={cardS.reportBtnText}>SIGNALER VU</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={cardS.shareBtn} onPress={() => setModalVisible(true)} activeOpacity={0.85}>
-          {downloading
-            ? <ActivityIndicator size="small" color="#b45f06" />
-            : <Ionicons name="share-social-outline" size={16} color="#b45f06" />
-          }
+        <TouchableOpacity
+          style={cardS.shareBtn}
+          onPress={handlePartager}
+          activeOpacity={0.85}
+          disabled={downloading}
+        >
+          {downloading ? (
+            <ActivityIndicator size="small" color="#b45f06" />
+          ) : (
+            <Ionicons name="share-social-outline" size={16} color="#b45f06" />
+          )}
           <Text style={cardS.shareBtnText}>{downloading ? 'CHARGEMENT...' : 'PARTAGER'}</Text>
         </TouchableOpacity>
       </View>
-
-      <ModalPartage
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        onWhatsApp={handleWhatsApp}
-        onFacebook={handleFacebook}
-        onAutre={handleAutre}
-      />
     </View>
   );
 }
 
 const cardS = StyleSheet.create({
-  card: { backgroundColor: '#ffffff', borderRadius: 12, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  cardHighlighted: {
+    borderColor: '#b45f06',
+    borderWidth: 2,
+    shadowColor: '#b45f06',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   urgenceBanner: { paddingHorizontal: 16, paddingTop: 10 },
   photoContainer: { height: 200, backgroundColor: '#e5eeff' },
   photo: { width: '100%', height: '100%' },
-  photoPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#e5eeff' },
+  photoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#e5eeff',
+  },
   infoContainer: { padding: 16 },
   name: { fontSize: 20, fontWeight: '700', color: '#0b1c30', marginBottom: 4 },
   details: { fontSize: 14, color: '#45464d', marginBottom: 10 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   location: { fontSize: 13, color: '#45464d', flex: 1 },
   duration: { fontSize: 12, color: '#76777d', marginBottom: 4 },
-  buttonRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
-  reportBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#1e3a5f', paddingVertical: 10, borderRadius: 6 },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  reportBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#1e3a5f',
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
   reportBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
-  shareBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: '#b45f06', backgroundColor: '#fff' },
+  shareBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#b45f06',
+    backgroundColor: '#fff',
+  },
   shareBtnText: { color: '#b45f06', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
 });
 
 // ─── ÉCRAN PRINCIPAL — TOUTES LES ALERTES EN COURS ───
 export default function AlertesPage({ navigation }: any) {
+  const route = useRoute();
   const [alertes, setAlertes] = useState<AlerteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [badgeCount, setBadgeCount] = useState(0);
 
-  // ─── FETCH : toutes les alertes en cours, sans limite de date ───
+  const focusId = (route.params as any)?.focus;
+
+  // ─── FETCH : toutes les alertes en cours ───
   const fetchAlertes = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -337,7 +333,6 @@ export default function AlertesPage({ navigation }: any) {
       if (error) throw error;
 
       const formatted: AlerteItem[] = (data || [])
-        // Masquer les personnes déjà retrouvées
         .filter((item: any) => {
           const statut = item.dossier_disparition?.statut_dossier;
           return statut !== 'retrouve_vivant' && statut !== 'retrouve_decede';
@@ -362,40 +357,94 @@ export default function AlertesPage({ navigation }: any) {
         });
 
       setAlertes(formatted);
+
+      if (focusId) {
+        const exists = formatted.some((a) => a.id === focusId);
+        if (exists) {
+          setHighlightedId(focusId);
+        }
+      }
     } catch (error) {
       console.error('Erreur chargement alertes:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [focusId]);
 
-  // ─── Marquer toutes les notifications comme lues à l'ouverture ───
+  // ─── Marquer toutes les notifications comme lues ───
   const marquerNotificationsLues = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      await supabase
+
+      const { error } = await supabase
         .from('notification')
         .update({ lue: true })
         .eq('id_utilisateur', user.id)
         .eq('lue', false);
+
+      if (!error) {
+        setBadgeCount(0);
+      }
     } catch (e) {
       console.warn('Erreur marquage notifications:', e);
     }
   }, []);
+
+  // ─── Récupérer le nombre de notifications non lues ───
+  const fetchBadgeCount = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { count, error } = await supabase
+        .from('notification')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_utilisateur', user.id)
+        .eq('lue', false);
+
+      if (!error) {
+        setBadgeCount(count || 0);
+      }
+    } catch (e) {
+      console.warn('Erreur badge count:', e);
+    }
+  }, []);
+
+  // ─── Mettre à jour le badge en temps réel ───
+  useEffect(() => {
+    const channel = supabase
+      .channel('notification_badge')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notification',
+        },
+        () => {
+          fetchBadgeCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchBadgeCount]);
 
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchAlertes();
       marquerNotificationsLues();
-    }, [fetchAlertes, marquerNotificationsLues])
+      fetchBadgeCount();
+    }, [fetchAlertes, marquerNotificationsLues, fetchBadgeCount])
   );
 
-  // Compteurs
-  const alertesCritiques = alertes.filter(a => a.niveau_urgence === 'critique').length;
-  const alertesUrgentes  = alertes.filter(a => a.niveau_urgence === 'urgent').length;
+  const alertesCritiques = alertes.filter((a) => a.niveau_urgence === 'critique').length;
+  const alertesUrgentes = alertes.filter((a) => a.niveau_urgence === 'urgent').length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -410,7 +459,13 @@ export default function AlertesPage({ navigation }: any) {
           <Text style={styles.headerTitle}>Alertes en cours</Text>
           <Text style={styles.headerDate}>Toutes les disparitions actives</Text>
         </View>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerBadgeContainer}>
+          {badgeCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badgeCount > 9 ? '9+' : badgeCount}</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* BANDEAU COMPTEUR */}
@@ -418,18 +473,24 @@ export default function AlertesPage({ navigation }: any) {
         <View style={styles.counterLeft}>
           <Ionicons name="notifications-outline" size={20} color="#b45f06" />
           <Text style={styles.counterText}>
-            {loading ? '...' : `${alertes.length} alerte${alertes.length > 1 ? 's' : ''} active${alertes.length > 1 ? 's' : ''}`}
+            {loading
+              ? '...'
+              : `${alertes.length} alerte${alertes.length > 1 ? 's' : ''} active${alertes.length > 1 ? 's' : ''}`}
           </Text>
         </View>
         <View style={styles.counterRight}>
           {alertesCritiques > 0 && (
             <View style={styles.badgeCritique}>
-              <Text style={styles.badgeCritiqueText}>{alertesCritiques} critique{alertesCritiques > 1 ? 's' : ''}</Text>
+              <Text style={styles.badgeCritiqueText}>
+                {alertesCritiques} critique{alertesCritiques > 1 ? 's' : ''}
+              </Text>
             </View>
           )}
           {alertesUrgentes > 0 && (
             <View style={styles.badgeUrgent}>
-              <Text style={styles.badgeUrgentText}>{alertesUrgentes} urgent{alertesUrgentes > 1 ? 's' : ''}</Text>
+              <Text style={styles.badgeUrgentText}>
+                {alertesUrgentes} urgent{alertesUrgentes > 1 ? 's' : ''}
+              </Text>
             </View>
           )}
         </View>
@@ -449,7 +510,10 @@ export default function AlertesPage({ navigation }: any) {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); fetchAlertes(); }}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchAlertes();
+            }}
             colors={['#b45f06']}
             tintColor="#b45f06"
           />
@@ -470,7 +534,12 @@ export default function AlertesPage({ navigation }: any) {
           </View>
         ) : (
           alertes.map((alerte) => (
-            <AlerteCard key={alerte.id} alerte={alerte} navigation={navigation} />
+            <AlerteCard
+              key={alerte.id}
+              alerte={alerte}
+              navigation={navigation}
+              isHighlighted={alerte.id === highlightedId}
+            />
           ))
         )}
       </ScrollView>
@@ -495,6 +564,17 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#0b1c30' },
   headerDate: { fontSize: 11, color: '#76777d', marginTop: 2 },
+  headerBadgeContainer: { width: 40, alignItems: 'center', justifyContent: 'center' },
+  badge: {
+    backgroundColor: '#dc2626',
+    borderRadius: 12,
+    minWidth: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  badgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
 
   counterBanner: {
     flexDirection: 'row',
