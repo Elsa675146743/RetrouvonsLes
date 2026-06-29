@@ -65,11 +65,6 @@ export default function NouveauSignalement({ navigation, route }: any) {
   const [dateObservation, setDateObservation] = useState('');
   const [heureObservation, setHeureObservation] = useState('');
   const [lieuObservation, setLieuObservation] = useState('');
-  const [ville, setVille] = useState('');
-  const [region, setRegion] = useState('');
-  const [niveauCertitude, setNiveauCertitude] = useState('probable');
-  const [contexte, setContexte] = useState('');
-  const [directionDeplacement, setDirectionDeplacement] = useState('');
   const [photos, setPhotos] = useState<any[]>([]);
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -79,13 +74,6 @@ export default function NouveauSignalement({ navigation, route }: any) {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapKey, setMapKey] = useState(0);
-
-  const certitudeOptions = [
-    { value: 'certain', label: 'Certain' },
-    { value: 'tres_probable', label: 'Très probable' },
-    { value: 'probable', label: 'Probable' },
-    { value: 'incertain', label: 'Incertain' },
-  ];
 
   const searchLocation = async (query: string) => {
     if (!query.trim()) {
@@ -167,14 +155,9 @@ export default function NouveauSignalement({ navigation, route }: any) {
         .insert({
           description: description.trim(),
           lieu_observation: lieuObservation.trim() || null,
-          ville_observation: ville.trim() || null,
-          region_observation: region.trim() || null,
           latitude_observation: latitude,
           longitude_observation: longitude,
           date_observation: dateTimeISO,
-          niveau_certitude: niveauCertitude,
-          contexte_observation: contexte.trim() || null,
-          direction_deplacement: directionDeplacement.trim() || null,
           statut_validation: 'en_attente',
           source_signalement: 'application_mobile',
           id_utilisateur: user.id,
@@ -241,11 +224,20 @@ export default function NouveauSignalement({ navigation, route }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Description */}
         <View style={styles.card}>
           <Text style={styles.label}>Description *</Text>
-          <TextInput style={styles.textArea} placeholder="Décrivez ce que vous avez observé..." value={description} onChangeText={setDescription} multiline numberOfLines={5} />
+          <TextInput 
+            style={styles.textArea} 
+            placeholder="Décrivez ce que vous avez observé..." 
+            value={description} 
+            onChangeText={setDescription} 
+            multiline 
+            numberOfLines={5} 
+          />
         </View>
 
+        {/* Date et Heure */}
         <View style={styles.rowContainer}>
           <View style={[styles.halfCard, { marginRight: 8 }]}>
             <Text style={styles.label}>Date *</Text>
@@ -257,6 +249,7 @@ export default function NouveauSignalement({ navigation, route }: any) {
           </View>
         </View>
 
+        {/* Localisation */}
         <View style={styles.card}>
           <Text style={styles.label}>Localisation</Text>
           <View style={styles.searchBar}>
@@ -285,42 +278,31 @@ export default function NouveauSignalement({ navigation, route }: any) {
           )}
           
           <View style={styles.mapContainer}>
-            <WebView key={mapKey} originWhitelist={['*']} source={{ html: buildMapHTML(latitude, longitude) }} style={{ flex: 1 }} onMessage={handleMapMessage} />
+            <WebView 
+              key={mapKey} 
+              originWhitelist={['*']} 
+              source={{ html: buildMapHTML(latitude, longitude) }} 
+              style={{ flex: 1 }} 
+              onMessage={handleMapMessage} 
+            />
           </View>
-          {latitude && longitude && <Text style={styles.coordsText}>📍 {latitude.toFixed(5)}, {longitude.toFixed(5)}</Text>}
+          {latitude && longitude && (
+            <Text style={styles.coordsText}>📍 {latitude.toFixed(5)}, {longitude.toFixed(5)}</Text>
+          )}
         </View>
 
+        {/* Lieu précis */}
         <View style={styles.card}>
-          <Text style={styles.label}>Lieu précis</Text>
-          <TextInput style={styles.input} placeholder="Quartier, rue..." value={lieuObservation} onChangeText={setLieuObservation} />
+          <Text style={styles.label}>Lieu précis (optionnel)</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="Quartier, rue..." 
+            value={lieuObservation} 
+            onChangeText={setLieuObservation} 
+          />
         </View>
 
-        <View style={styles.rowContainer}>
-          <View style={[styles.halfCard, { marginRight: 8 }]}><Text style={styles.label}>Ville</Text><TextInput style={styles.input} placeholder="Yaoundé..." value={ville} onChangeText={setVille} /></View>
-          <View style={[styles.halfCard, { marginLeft: 8 }]}><Text style={styles.label}>Région</Text><TextInput style={styles.input} placeholder="Centre..." value={region} onChangeText={setRegion} /></View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Niveau de certitude</Text>
-          <View style={styles.optionsRow}>
-            {certitudeOptions.map(opt => (
-              <TouchableOpacity key={opt.value} style={[styles.optionChip, niveauCertitude === opt.value && styles.optionChipActive]} onPress={() => setNiveauCertitude(opt.value)}>
-                <Text style={[styles.optionChipText, niveauCertitude === opt.value && styles.optionChipTextActive]}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Contexte</Text>
-          <TextInput style={styles.textAreaSmall} placeholder="Contexte de l'observation..." value={contexte} onChangeText={setContexte} multiline numberOfLines={3} />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Direction de déplacement</Text>
-          <TextInput style={styles.input} placeholder="Direction..." value={directionDeplacement} onChangeText={setDirectionDeplacement} />
-        </View>
-
+        {/* Photos */}
         <View style={styles.card}>
           <Text style={styles.label}>Photos</Text>
           <TouchableOpacity style={styles.uploadZone} onPress={handlePickPhotos}>
@@ -333,16 +315,25 @@ export default function NouveauSignalement({ navigation, route }: any) {
               {photos.map((photo, i) => (
                 <View key={i} style={styles.photoItem}>
                   <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
-                  <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(i)}><Ionicons name="close-circle" size={20} color="#ef4444" /></TouchableOpacity>
+                  <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(i)}>
+                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                  </TouchableOpacity>
                 </View>
               ))}
             </ScrollView>
           )}
         </View>
 
+        {/* Boutons */}
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation.goBack()}><Text style={styles.cancelBtnText}>Annuler</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} onPress={handleSubmit} disabled={submitting}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.cancelBtnText}>Annuler</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} 
+            onPress={handleSubmit} 
+            disabled={submitting}
+          >
             {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.submitBtnText}>Soumettre</Text>}
           </TouchableOpacity>
         </View>
@@ -360,7 +351,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#e2e8f0' },
   label: { fontSize: 14, fontWeight: '700', color: '#0b1c30', marginBottom: 8 },
   textArea: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 14, minHeight: 100, borderWidth: 1, borderColor: '#e2e8f0', textAlignVertical: 'top' },
-  textAreaSmall: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 14, minHeight: 80, borderWidth: 1, borderColor: '#e2e8f0', textAlignVertical: 'top' },
   input: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 14, borderWidth: 1, borderColor: '#e2e8f0' },
   rowContainer: { flexDirection: 'row', marginBottom: 16, gap: 16 },
   halfCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' },
@@ -372,11 +362,6 @@ const styles = StyleSheet.create({
   resultSubText: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
   mapContainer: { height: 200, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 8 },
   coordsText: { fontSize: 11, color: '#64748b', textAlign: 'center', marginTop: 8 },
-  optionsRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  optionChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
-  optionChipActive: { backgroundColor: '#b45f06', borderColor: '#b45f06' },
-  optionChipText: { fontSize: 13, color: '#64748b' },
-  optionChipTextActive: { color: '#fff', fontWeight: '600' },
   uploadZone: { borderWidth: 1.5, borderColor: '#cbd5e1', borderStyle: 'dashed', borderRadius: 10, padding: 20, alignItems: 'center', gap: 8, backgroundColor: '#f8fafc' },
   uploadText: { fontSize: 13, color: '#64748b' },
   uploadHint: { fontSize: 11, color: '#94a3b8' },

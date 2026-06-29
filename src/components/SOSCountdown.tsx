@@ -73,12 +73,12 @@ export default function SOSCountdown({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#dc2626',
+    backgroundColor: '#cc5500',
     borderRadius: 20,
     padding: 30,
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#dc2626',
+    shadowColor: '#cc5500',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

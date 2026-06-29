@@ -1,10 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <!-- ✅ AJOUTÉ pour les notifications Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
@@ -19,28 +19,11 @@
       
       <meta-data android:name="com.google.android.geo.API_KEY" android:value=""/>
 
-      <!-- ✅ AJOUTÉ : Service Firebase Messaging pour les notifications en arrière-plan -->
-      <service
-          android:name="com.google.firebase.messaging.FirebaseMessagingService"
-          android:exported="false">
-          <intent-filter>
-              <action android:name="com.google.firebase.MESSAGING_EVENT" />
-          </intent-filter>
-      </service>
-
-      <!-- ✅ AJOUTÉ : Service pour les notifications avec image (optionnel) -->
-      <service
-          android:name="com.google.firebase.messaging.FirebaseMessagingService"
-          android:exported="false">
-          <intent-filter>
-              <action android:name="com.google.firebase.MESSAGING_EVENT" />
-          </intent-filter>
-      </service>
-
-      <!-- ✅ AJOUTÉ : Meta-data Firebase -->
+      <!-- ✅ Pour remplacer le meta-data de la librairie -->
       <meta-data
           android:name="com.google.firebase.messaging.default_notification_channel_id"
-          android:value="retrouvonsles_channel" />
+          android:value="retrouvonsles_channel"
+          tools:replace="android:value" />
 
       <activity
         android:name=".MainActivity"

@@ -20,6 +20,7 @@ import {
   getHistoriqueSOS,
   getCurrentPosition,
   requestLocationPermission,
+  supprimerHistoriqueSOS,
   SosEvent,
 } from '../../../services/sosApi';
 import SOSCountdown from '../../../components/SOSCountdown';
@@ -28,7 +29,6 @@ import { supabase } from '../../../services/supabase';
 const COUNTDOWN_SECONDS = 15;
 
 export default function SOS({ navigation }: any) {
-  // États principaux
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [messageUrgence, setMessageUrgence] = useState('');
@@ -43,7 +43,6 @@ export default function SOS({ navigation }: any) {
   const [rateLimitError, setRateLimitError] = useState(false);
   const [contactsCount, setContactsCount] = useState(0);
 
-  // Charger l'historique et les contacts
   const fetchData = useCallback(async () => {
     try {
       const [history, contacts] = await Promise.all([
@@ -66,18 +65,15 @@ export default function SOS({ navigation }: any) {
     }, [fetchData])
   );
 
-  // Demander la permission de localisation au montage
   useEffect(() => {
     requestLocationPermission();
   }, []);
 
-  // Démarrer la procédure SOS
   const demarrerSOS = useCallback(async () => {
     setRateLimitError(false);
     setIsActive(true);
     setCountdown(COUNTDOWN_SECONDS);
 
-    // Obtenir la position en arrière-plan
     const coords = await getCurrentPosition();
     if (coords) {
       setLatitude(coords.latitude);
@@ -90,11 +86,8 @@ export default function SOS({ navigation }: any) {
       setLongitude(null);
       setPrecisionMeters(null);
     }
-
-    // Le compte à rebours est géré par le composant SOSCountdown
   }, []);
 
-  // Annuler la procédure
   const annuler = useCallback(async () => {
     setIsActive(false);
     setCountdown(null);
@@ -107,13 +100,12 @@ export default function SOS({ navigation }: any) {
       await fetchData();
     } catch (error: any) {
       console.error('Erreur annulation:', error);
-      Alert.alert('Erreur', error.message || 'Impossible d\'annuler la procédure');
+      Alert.alert('Erreur', error.message || "Impossible d'annuler la procédure");
     } finally {
       setLoading(false);
     }
   }, [fetchData]);
 
-  // Envoyer le SOS (quand le compte à rebours expire)
   const envoyer = useCallback(async () => {
     setIsActive(false);
     setCountdown(null);
@@ -121,7 +113,6 @@ export default function SOS({ navigation }: any) {
     try {
       setLoading(true);
 
-      // Vérifier si on a une position, sinon essayer une dernière fois
       let finalLat = latitude;
       let finalLng = longitude;
       let finalPrecision = precisionMeters;
@@ -139,7 +130,7 @@ export default function SOS({ navigation }: any) {
         }
       }
 
-      const result = await envoyerSOS({
+      await envoyerSOS({
         message: messageUrgence || undefined,
         latitude: finalLat,
         longitude: finalLng,
@@ -153,7 +144,6 @@ export default function SOS({ navigation }: any) {
           : 'SOS envoyé avec votre position. Les autorités et vos contacts sont notifiés.'
       );
 
-      // Réinitialiser
       setLatitude(null);
       setLongitude(null);
       setPrecisionMeters(null);
@@ -163,46 +153,56 @@ export default function SOS({ navigation }: any) {
       await fetchData();
     } catch (error: any) {
       console.error('Erreur envoi SOS:', error);
-
-      // Vérifier si c'est une erreur de rate limit
       if (error.message?.includes('Trop de demandes SOS récentes')) {
         setRateLimitError(true);
-        Alert.alert('Limite atteinte', 'Vous avez déjà envoyé 3 SOS dans l\'heure. Réessayez plus tard.');
+        Alert.alert('Limite atteinte', "Vous avez déjà envoyé 3 SOS dans l'heure. Réessayez plus tard.");
       } else {
-        Alert.alert('Erreur', error.message || 'Impossible d\'envoyer l\'alerte');
+        Alert.alert('Erreur', error.message || "Impossible d'envoyer l'alerte");
       }
     } finally {
       setLoading(false);
     }
   }, [latitude, longitude, precisionMeters, sansPosition, messageUrgence, fetchData]);
 
-  // Vérifier si le bouton SOS est désactivé
+  const supprimerHistorique = useCallback(() => {
+    Alert.alert(
+      'Supprimer l\'historique',
+      'Voulez-vous supprimer tout l\'historique des alertes ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await supprimerHistoriqueSOS();
+              await fetchData();
+            } catch (error: any) {
+              Alert.alert('Erreur', error.message || "Impossible de supprimer l'historique");
+            }
+          },
+        },
+      ]
+    );
+  }, [fetchData]);
+
   const isSosDisabled = rateLimitError || loading;
 
-  // Obtenir le libellé du statut
   const getStatutLabel = (statut: string) => {
     switch (statut) {
-      case 'envoye':
-        return '📤 Envoyé';
-      case 'traite':
-        return '✅ Pris en charge';
-      case 'annule':
-        return '❌ Annulé';
-      default:
-        return statut;
+      case 'envoye': return '📤 Envoyé';
+      case 'traite': return '✅ Pris en charge';
+      case 'annule': return '❌ Annulé';
+      default: return statut;
     }
   };
 
   const getStatutColor = (statut: string) => {
     switch (statut) {
-      case 'envoye':
-        return '#f59e0b';
-      case 'traite':
-        return '#16a34a';
-      case 'annule':
-        return '#ef4444';
-      default:
-        return '#64748b';
+      case 'envoye': return '#f59e0b';
+      case 'traite': return '#16a34a';
+      case 'annule': return '#ef4444';
+      default: return '#64748b';
     }
   };
 
@@ -210,7 +210,6 @@ export default function SOS({ navigation }: any) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#0b1c30" />
@@ -221,11 +220,6 @@ export default function SOS({ navigation }: any) {
           onPress={() => navigation.navigate('ContactsUrgence')}
         >
           <Ionicons name="people-outline" size={22} color="#b45f06" />
-          {contactsCount > 0 && (
-            <View style={styles.contactsBadge}>
-              <Text style={styles.contactsBadgeText}>{contactsCount}</Text>
-            </View>
-          )}
         </TouchableOpacity>
       </View>
 
@@ -241,16 +235,6 @@ export default function SOS({ navigation }: any) {
           />
         }
       >
-        {/* Avertissement */}
-        <View style={styles.warningBox}>
-          <Ionicons name="warning-outline" size={24} color="#dc2626" />
-          <Text style={styles.warningText}>
-            En cas de danger immédiat, contactez d'abord les secours : Police 17, Pompiers 18, SAMU 15.
-            Le bouton SOS est une aide complémentaire.
-          </Text>
-        </View>
-
-        {/* Erreur rate limit */}
         {rateLimitError && (
           <View style={styles.rateLimitBox}>
             <Ionicons name="timer-outline" size={20} color="#dc2626" />
@@ -260,7 +244,6 @@ export default function SOS({ navigation }: any) {
           </View>
         )}
 
-        {/* Compte à rebours ou bouton SOS */}
         {isActive ? (
           <SOSCountdown
             seconds={COUNTDOWN_SECONDS}
@@ -279,16 +262,13 @@ export default function SOS({ navigation }: any) {
             ) : (
               <>
                 <Ionicons name="alert-circle" size={40} color="#fff" />
-                <Text style={styles.sosButtonText}>DÉMARRER LA PROCÉDURE</Text>
-                <Text style={styles.sosSubText}>
-                  {COUNTDOWN_SECONDS} secondes pour annuler
-                </Text>
+                <Text style={styles.sosButtonText}>LANCER LE SOS</Text>
+                <Text style={styles.sosSubText}>{COUNTDOWN_SECONDS} secondes pour annuler</Text>
               </>
             )}
           </TouchableOpacity>
         )}
 
-        {/* Message d'urgence */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Message d'urgence (optionnel)</Text>
           <TextInput
@@ -315,7 +295,6 @@ export default function SOS({ navigation }: any) {
           )}
         </View>
 
-        {/* Gestion des contacts */}
         <TouchableOpacity
           style={styles.contactsCard}
           onPress={() => navigation.navigate('ContactsUrgence')}
@@ -334,19 +313,29 @@ export default function SOS({ navigation }: any) {
           <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
         </TouchableOpacity>
 
-        {/* Historique */}
         <View style={styles.card}>
-          <TouchableOpacity
-            style={styles.cardHeader}
-            onPress={() => setShowHistorique(!showHistorique)}
-          >
-            <Text style={styles.cardTitle}>📋 Historique des alertes</Text>
-            <Ionicons
-              name={showHistorique ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color="#64748b"
-            />
-          </TouchableOpacity>
+          <View style={styles.cardHeader}>
+            <TouchableOpacity
+              style={styles.cardHeaderLeft}
+              onPress={() => setShowHistorique(!showHistorique)}
+            >
+              <Text style={styles.cardTitle}>📋 Historique des alertes</Text>
+            </TouchableOpacity>
+            <View style={styles.cardHeaderRight}>
+              {historique.length > 0 && (
+                <TouchableOpacity onPress={supprimerHistorique} style={styles.deleteBtn}>
+                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => setShowHistorique(!showHistorique)}>
+                <Ionicons
+                  name={showHistorique ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color="#64748b"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {showHistorique &&
             (historique.length === 0 ? (
@@ -354,22 +343,12 @@ export default function SOS({ navigation }: any) {
             ) : (
               historique.map((event) => (
                 <View key={event.id} style={styles.historiqueItem}>
-                  <View
-                    style={[
-                      styles.historiqueDot,
-                      { backgroundColor: getStatutColor(event.statut) },
-                    ]}
-                  />
+                  <View style={[styles.historiqueDot, { backgroundColor: getStatutColor(event.statut) }]} />
                   <View style={styles.historiqueContent}>
                     <Text style={styles.historiqueDate}>
                       {new Date(event.created_at).toLocaleString('fr-FR')}
                     </Text>
-                    <Text
-                      style={[
-                        styles.historiqueStatut,
-                        { color: getStatutColor(event.statut) },
-                      ]}
-                    >
+                    <Text style={[styles.historiqueStatut, { color: getStatutColor(event.statut) }]}>
                       {getStatutLabel(event.statut)}
                     </Text>
                     {event.message && (
@@ -397,7 +376,6 @@ export default function SOS({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -410,44 +388,8 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#0b1c30' },
-  contactsBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  contactsBadge: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: '#dc2626',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  contactsBadgeText: { fontSize: 9, fontWeight: '700', color: '#fff' },
-
+  contactsBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { padding: 16, paddingBottom: 40 },
-
-  warningBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#fef2f2',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#dc2626',
-  },
-  warningText: { flex: 1, fontSize: 12, color: '#991b1b', lineHeight: 16 },
-
   rateLimitBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -458,14 +400,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   rateLimitText: { flex: 1, fontSize: 12, color: '#dc2626' },
-
   sosButton: {
-    backgroundColor: '#dc2626',
+    backgroundColor: '#cc5500',
     borderRadius: 20,
     padding: 30,
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#dc2626',
+    shadowColor: '#cc5500',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -474,7 +415,6 @@ const styles = StyleSheet.create({
   sosButtonDisabled: { opacity: 0.5 },
   sosButtonText: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 12 },
   sosSubText: { fontSize: 12, color: '#fecaca', marginTop: 4 },
-
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -488,8 +428,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  cardHeaderLeft: { flex: 1 },
+  cardHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  deleteBtn: { padding: 4 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#0b1c30' },
-
   messageInput: {
     backgroundColor: '#f8fafc',
     borderRadius: 10,
@@ -503,7 +445,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   coordsText: { fontSize: 11, color: '#64748b', marginTop: 8 },
-
   contactsCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -518,9 +459,7 @@ const styles = StyleSheet.create({
   contactsCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   contactsCardTitle: { fontSize: 15, fontWeight: '600', color: '#0b1c30' },
   contactsCardSubtitle: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
-
   emptyText: { fontSize: 13, color: '#94a3b8', textAlign: 'center', paddingVertical: 20 },
-
   historiqueItem: {
     flexDirection: 'row',
     paddingVertical: 12,

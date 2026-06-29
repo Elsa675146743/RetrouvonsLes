@@ -239,6 +239,21 @@ export async function getHistoriqueSOS(limit: number = 20): Promise<SosEvent[]> 
   return data || [];
 }
 
+/**
+ * ✅ SUPPRIMER TOUT L'HISTORIQUE DES SOS DE L'UTILISATEUR
+ */
+export async function supprimerHistoriqueSOS(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Non connecté');
+
+  const { error } = await supabase
+    .from('sos_event')
+    .delete()
+    .eq('id_utilisateur', user.id);
+
+  if (error) throw error;
+}
+
 export async function getContactsAvecVerification(): Promise<ContactUrgence[]> {
   return getContactsUrgence();
 }

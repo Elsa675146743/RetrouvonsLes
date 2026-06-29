@@ -293,7 +293,7 @@ export default function ContactsUrgence({ navigation }: any) {
             <Text style={modalStyles.label}>Nom *</Text>
             <TextInput
               style={modalStyles.input}
-              placeholder="Jean Dupont"
+              placeholder=""
               placeholderTextColor="#94a3b8"
               value={nom}
               onChangeText={setNom}
@@ -302,7 +302,7 @@ export default function ContactsUrgence({ navigation }: any) {
             <Text style={modalStyles.label}>Email *</Text>
             <TextInput
               style={modalStyles.input}
-              placeholder="jean.dupont@example.com"
+              placeholder=""
               placeholderTextColor="#94a3b8"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -313,7 +313,7 @@ export default function ContactsUrgence({ navigation }: any) {
             <Text style={modalStyles.label}>Relation</Text>
             <TextInput
               style={modalStyles.input}
-              placeholder="Père, frère, ami..."
+              placeholder=""
               placeholderTextColor="#94a3b8"
               value={relation}
               onChangeText={setRelation}
